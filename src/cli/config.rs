@@ -25,7 +25,7 @@ impl Config {
         }
     }
 
-    pub fn init(self, mut keywords: HashMap<String, String>) {
+    pub fn init(self, keywords: &mut HashMap<String, String>) {
         // this sample is just a template that create config.toml and the new.toml template for the
         // first time, Now something maybe confusing is the "initPJNAME" wtf is it ?
         // That's just a way to workaround auto replacing PROJECTNAME in templates
@@ -65,7 +65,7 @@ content = '''
 
         let template: Template = toml::from_str(&conf_template).unwrap();
 
-        Template::extract(template, &mut keywords);
+        Template::extract(template, &mut keywords.clone());
     }
 
     pub fn get_keywords(self) -> HashMap<String, String> {
@@ -88,7 +88,7 @@ content = '''
                 "INFO".bold().blue(),
                 "Looks like it's your first time running spark, creating config files and templates for you".green()
             );
-            Self::init(self, keywords.clone());
+            Self::init(self, &mut keywords);
             println!("");
         }
 
