@@ -65,7 +65,7 @@ content = '''
 
         let template: Template = toml::from_str(&conf_template).unwrap();
 
-        Template::extract(template, &mut keywords.clone());
+        Template::extract(template, keywords);
     }
 
     pub fn get_keywords(self) -> HashMap<String, String> {
