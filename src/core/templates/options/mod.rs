@@ -28,10 +28,10 @@ impl Options {
     pub fn handle(self) {
         if self.git {
             if self.project_root.is_empty() {
-                println!(
-                    "{}: {}",
-                    "error".red().bold(),
-                    "Please specify a project root.".red().bold()
+                eprintln!(
+                    "\n{}: {}",
+                    "error".to_string().red(),
+                    "Project root is not set".yellow()
                 );
                 return;
             }
@@ -41,7 +41,7 @@ impl Options {
                 self.project_root.blue()
             );
 
-            git::git_init(&self.project_root);
+            git::init(&self.project_root);
         }
     }
 }

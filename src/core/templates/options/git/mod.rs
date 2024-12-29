@@ -8,7 +8,7 @@ pub fn check_git() -> Result<(), String> {
     Ok(())
 }
 
-pub fn git_init(project_root: &str) {
+pub fn init(project_root: &str) {
 
     if let Err(e) = check_git() {
         eprintln!("{}: {}", "error".red().bold(), e.red().bold());
@@ -23,6 +23,11 @@ pub fn git_init(project_root: &str) {
         );
         return;
     }
+
+    //if std::path::Path::new(".git").exists() {
+        //println!("{}", "\n✅ Git is already initialized.".yellow().bold());
+        //return;
+    //}
 
     let cmd = Command::new("git")
         .arg("init") //TODO: maybe add git arguments? that can be a bit risky..

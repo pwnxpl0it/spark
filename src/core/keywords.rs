@@ -19,7 +19,7 @@ impl Keywords {
         }
     }
 
-    pub fn strip(keyword: String) -> String {
+    pub fn strip(keyword: &String) -> String {
         keyword.replace("{{$", "").replace("}}", "")
     }
 
@@ -77,7 +77,7 @@ impl Keywords {
         keywords
     }
 
-    pub fn replace_keywords(keywords: HashMap<String, String>, mut data: String) -> String {
+    pub fn replace_keywords(keywords: &HashMap<String, String>, mut data: String) -> String {
         for (key, value) in keywords.iter() {
             data = data.replace(key, value);
         }

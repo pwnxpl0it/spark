@@ -83,54 +83,67 @@ impl Template {
             .unwrap()
     }
 
+    fn handle_project_name(
+        keywords: &mut HashMap<String, String>,
+        options: &mut Options,
+        file: &File,
+    ) -> Result<String, String> {
+        let trimmed_content = file.content.trim();
+        let trimmed_path = file.path.trim();
+        let trimmed_project_root = options.project_root.trim();
+
+        if trimmed_content.contains("{{$PROJECTNAME}}")
+            || trimmed_path.contains("{{$PROJECTNAME}}")
+            || trimmed_project_root.contains("{{$PROJECTNAME}}")
+        {
+            let project_name: String = prompt("Project name")
+                .map_err(|_| format!("{}", "Project name not set.".red().bold()))?;
+
+            keywords.insert("{{$PROJECTNAME}}".to_string(), project_name.clone());
+            options.set_project_root(&project_name);
+            Ok(project_name)
+        } else {
+            Ok(String::new())
+        }
+    }
+
     pub fn extract(mut self, keywords: &mut HashMap<String, String>) {
-        let mut project = String::from("");
-        let mut output = String::from("");
-        let re = Regex::new(KEYWORDS_REGEX).unwrap();
-        let files = self.files.clone().expect("No files table");
+        let re = Regex::new(KEYWORDS_REGEX).expect("Invalid keywords regex");
         let mut options = self.dump_options().unwrap_or_default();
+        let json_data = options.json_data.clone().unwrap_or(serde_json::Value::Null);
+        let mut project = String::new();
 
-        files.into_iter().for_each(|file| {
-            *keywords = Fns::find_and_exec(
-                file.content.clone(),
-                keywords.clone(),
-                re.clone(),
-                options.json_data.clone().unwrap_or(serde_json::Value::Null),
-            );
+        self.files
+            .expect("No files table")
+            .into_iter()
+            .for_each(|file| {
+                Fns::find_and_exec(&file.content, keywords, &re, &json_data);
+                Fns::find_and_exec(&file.path, keywords, &re, &json_data);
 
-            *keywords = Fns::find_and_exec(
-                file.path.clone(),
-                keywords.clone(),
-                re.clone(),
-                options.json_data.clone().unwrap_or(serde_json::Value::Null),
-            );
+                if project.is_empty() {
+                    project = match Self::handle_project_name(keywords, &mut options, &file) {
+                        Ok(name) => name,
+                        Err(e) => {
+                            eprintln!("Error handling project name: {}", e);
+                            return;
+                        }
+                    };
+                }
 
-            if (file.path.contains("{{$PROJECTNAME}}")
-                || file.content.contains("{{$PROJECTNAME}}")
-                || options.project_root.contains("{{$PROJECTNAME}}"))
-                && project.is_empty()
-            {
-                project = prompt("Project name").unwrap();
-                options.set_project_root(&project);
-                keywords.insert("{{$PROJECTNAME}}".to_string(), project.to_owned());
-            }
+                let dir_path = file.path.split('/').collect::<Vec<_>>();
+                if dir_path.len() > 1 {
+                    create_dirs(&shellexpand::tilde(&Keywords::replace_keywords(
+                        keywords,
+                        file.path.replace(dir_path.last().unwrap(), ""),
+                    )));
+                }
 
-            let dir = file.path.split('/').collect::<Vec<_>>();
-            let path = Keywords::replace_keywords(keywords.to_owned(), file.path.to_owned());
+                let output = Keywords::replace_keywords(keywords, file.content);
+                let liquified = Self::liquify(&output);
+                let path = Keywords::replace_keywords(keywords, file.path);
 
-            if dir.len() > 1 {
-                create_dirs(&shellexpand::tilde(&Keywords::replace_keywords(
-                    keywords.to_owned(),
-                    file.path.to_owned().replace(dir[dir.len() - 1], ""),
-                )))
-            }
-
-            output = Keywords::replace_keywords(keywords.to_owned(), file.content);
-
-            let liquified = Self::liquify(&output);
-
-            write_content(&shellexpand::tilde(&path), liquified)
-        });
+                write_content(&shellexpand::tilde(&path), liquified);
+            });
 
         options.handle();
     }

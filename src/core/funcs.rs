@@ -23,7 +23,7 @@ impl Fns {
 
     /// This method finds `functions` in a string based on a Regex pattern that matches keywords
     pub fn find(
-        txt: String,
+        txt: &str,
         keywords: &HashMap<String, String>,
         re: &Regex,
     ) -> Option<IndexMap<String, (String, Self)>> {
@@ -34,11 +34,11 @@ impl Fns {
                 let keyword = key.as_str().to_string();
 
                 if !keywords.contains_key(&keyword) {
-                    let new_keyword = Keywords::strip(keyword.clone()).trim().to_string();
+                    let new_keyword = Keywords::strip(&keyword).trim().to_string();
                     let data = new_keyword.split(':').collect::<Vec<_>>();
 
                     if data.len() == 2 {
-                        let keyword_name = Keywords::strip(data[0].to_string());
+                        let keyword_name = Keywords::strip(&data[0].to_string());
                         let func = data[1].trim();
 
                         match func {
@@ -58,7 +58,7 @@ impl Fns {
                             }
                         }
                     } else {
-                        let keyword_name = Keywords::strip(keyword.clone());
+                        let keyword_name = Keywords::strip(&keyword);
                         found.insert(keyword_name, (keyword, Self::None));
                         continue;
                     }
@@ -84,21 +84,17 @@ impl Fns {
     }
 
     pub fn find_and_exec(
-        txt: String,
-        mut keywords: HashMap<String, String>,
-        re: Regex,
-        json_data: serde_json::Value,
-    ) -> HashMap<String, String> {
+        txt: &str,
+        keywords: &mut HashMap<String, String>,
+        re: &Regex,
+        json_data: &serde_json::Value,
+    ) {
         if let Some(found) = Self::find(txt, &keywords, &re) {
             for (keyword_name, (keyword, function)) in found {
                 //HACK: Just a bit of optimization, if the json_data is null then it doesn't make sense to run jq
                 // because doing so is every expensive and here we are dealing with dynamic queries
                 if !json_data.is_null() && keyword_name.contains(".") {
-                    //TODO: This is not very performant but it works for now UwU
-                    let output = jq_rs::run(&keyword_name, &json_data.to_string());
-
-                    if let Ok(value) = output {
-                        //NOTE: This will also replace any quotes in the value
+                    if let Ok(value) = jq_rs::run(&keyword_name, &json_data.to_string()) {
                         keywords.insert(keyword, value.replace("\"", ""));
                     }
                     continue;
@@ -123,7 +119,5 @@ impl Fns {
                 }
             }
         }
-
-        keywords
     }
 }
