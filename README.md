@@ -147,7 +147,7 @@ Template options in spark provide a way to customize the project setup by allowi
 | Option   | Description    | Example  |
 |--------------- | --------------- | ---------------  |
 | git   | Initialize Git repository in the project directory   | `git=true` |
-| project_root    | Set the project name to a constant value     | `project_root="new_project"` |
+| project_root    | Set the project name to a constant value or ask for user input  | `project_root="new_project"`, `project_root="{{$PROJECTNAME}}"` |
 | use_liquid    | Enable/Disable Liquid templating in the template     | `use_liquid=true` |
 | use_json    | embbed JSON in the template     | `use_json='{"id": 1, "name": "John"}'` |
 
