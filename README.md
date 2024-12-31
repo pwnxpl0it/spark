@@ -149,7 +149,7 @@ Template options in spark provide a way to customize the project setup by allowi
 | git   | Initialize Git repository in the project directory   | `git=true` |
 | project_root    | Set the project name to a constant value or ask for user input  | `project_root="new_project"`, `project_root="{{$PROJECTNAME}}"` |
 | use_liquid    | Enable/Disable Liquid templating in the template     | `use_liquid=true` |
-| use_json    | embbed JSON in the template     | `use_json='{"id": 1, "name": "John"}'` |
+| use_json    | embed JSON in the template     | `use_json='{"id": 1, "name": "John"}'` |
 
 #### Git Support 🐙
 Initialize Git during project creation by using:
@@ -355,6 +355,10 @@ Example! 5 ff.html
 ```
 
 With this integration, you can create dynamic and flexible templates that combine the strengths of both `spark` and Liquid.
+
+> [!TIP]
+> Liquid is enabled by default in templates. To disable it, set `use_liquid=false` in the template options.
+> or use `--no-liquid` flag when running `spark`
 
 ## Automated Template generation 🚀
 Also there is one more time saving way! if you have some files in `/foo/bar/` you can just run `spark init` and it will create a template for you with directory name `bar.toml` and it will have all your files in it! 🌸
