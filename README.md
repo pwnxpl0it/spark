@@ -144,8 +144,12 @@ also keep in mind that once a function gets called on a keyword you can use `{{$
 
 Template options in spark provide a way to customize the project setup by allowing predefined variables or settings within the template. These options are defined in the TOML configuration file of the template and can control various aspects of the template generation process.
 
-Right now it's only for git support, but more options will be added later.
-
+| Option   | Description    | Example  |
+|--------------- | --------------- | ---------------  |
+| git   | Initialize Git repository in the project directory   | `git=true` |
+| project_root    | Set the project name to a constant value     | `project_root="new_project"` |
+| use_liquid    | Enable/Disable Liquid templating in the template     | `use_liquid=true` |
+| use_json    | embbed JSON in the template     | `use_json='{"id": 1, "name": "John"}'` |
 
 #### Git Support 🐙
 Initialize Git during project creation by using:
