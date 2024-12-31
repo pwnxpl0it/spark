@@ -49,8 +49,6 @@ fn main() {
 
         let mut parsed_template: Template = toml::from_str(&template_content).unwrap();
 
-        let mut options = parsed_template.dump_options().unwrap_or_default();
-
         if !args.is_present("quiet") {
             println!(
                 "\n{}: {}",
@@ -59,6 +57,8 @@ fn main() {
             );
             Template::show_info(&parsed_template);
         }
+
+        let mut options = parsed_template.dump_options().unwrap_or_default();
 
         if args.is_present("json") {
             let json_file = fs::read_to_string(args.value_of("json").unwrap());
@@ -69,6 +69,10 @@ fn main() {
         if args.is_present("git") {
             options.set_git(true);
             options.set_project_root("{{$PROJECTNAME}}");
+        }
+
+        if args.is_present("no-liquid") {
+            options.use_liquid = None;
         }
 
         parsed_template.set_options(options);
