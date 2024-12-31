@@ -6,6 +6,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             json_data: Some(serde_json::Value::Null),
+            use_liquid: Some(true),
             git: false,
             project_root: String::new(),
         }

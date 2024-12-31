@@ -42,6 +42,13 @@ impl Cli {
                     .takes_value(false)
                     .requires("template"),
             )
+            .arg(
+                Arg::with_name("no-liquid")
+                    .help("Disable Liquid support")
+                    .long("no-liquid")
+                    .takes_value(false)
+                    .requires("template"),
+            )
             .subcommand(Command::new("init").about("Creates a template for the current directory"))
             .get_matches()
     }
