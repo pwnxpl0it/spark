@@ -71,16 +71,17 @@ impl Template {
         fs::write(dest, toml_string).unwrap();
     }
 
-    //TODO: maybe move this to utils or just crate a submodule for it
     pub fn liquify(string: &str) -> String {
         let parser = liquid::ParserBuilder::with_stdlib().build().unwrap();
         let empty_globals = liquid::Object::new();
 
-        parser
-            .parse(string)
-            .unwrap()
-            .render(&empty_globals)
-            .unwrap()
+        match parser.parse(string) {
+            Ok(template) => template.render(&empty_globals).unwrap(),
+            Err(e) => {
+                eprintln!("{} parsing template: {}","error".red().bold(), e);
+                String::new()
+            }
+        }
     }
 
     fn handle_project_name(
