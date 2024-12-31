@@ -11,6 +11,7 @@ use crate::*;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Options {
     pub git: bool,
+    pub use_liquid: Option<bool>,
     pub json_data: Option<serde_json::Value>,
     pub project_root: String,
 }
@@ -78,7 +79,7 @@ impl Template {
         match parser.parse(string) {
             Ok(template) => template.render(&empty_globals).unwrap(),
             Err(e) => {
-                eprintln!("{} parsing template: {}","error".red().bold(), e);
+                eprintln!("{}: parsing template: {}", "error".red().bold(), e);
                 String::new()
             }
         }
@@ -140,10 +141,14 @@ impl Template {
                 }
 
                 let output = Keywords::replace_keywords(keywords, file.content);
-                let liquified = Self::liquify(&output);
                 let path = Keywords::replace_keywords(keywords, file.path);
 
-                write_content(&shellexpand::tilde(&path), liquified);
+                if options.use_liquid.is_some() {
+                    let liquified = Self::liquify(&output);
+                    write_content(&shellexpand::tilde(&path), liquified);
+                } else {
+                    write_content(&shellexpand::tilde(&path), output);
+                }
             });
 
         options.handle();
