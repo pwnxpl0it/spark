@@ -30,7 +30,7 @@ impl Cli {
             )
             .arg(
                 Arg::with_name("json")
-                    .help("read key,value pairs from a json file")
+                    .help("Read key,value pairs from a json file")
                     .long("json")
                     .takes_value(true)
                     .requires("template"),
