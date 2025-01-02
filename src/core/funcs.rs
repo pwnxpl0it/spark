@@ -4,13 +4,13 @@ use core::fmt;
 use indexmap::IndexMap;
 use promptly::prompt;
 use regex::Regex;
-use std::{collections::HashMap, env};
+use std::collections::HashMap;
 
 impl std::fmt::Display for Fns {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Self::Read => write!(f, "read"),
-            Self::Env => write!(f, "env"),
+            //Self::Env => write!(f, "env"),
             Self::None => write!(f, ""),
         }
     }
@@ -45,9 +45,9 @@ impl Fns {
                             "read" => {
                                 found.insert(keyword_name, (keyword, Self::Read));
                             }
-                            "env" => {
-                                found.insert(keyword_name, (keyword, Self::Env));
-                            }
+                            //"env" => {
+                                //found.insert(keyword_name, (keyword, Self::Env));
+                            //}
                             _ => {
                                 eprintln!(
                                     "\n{}: '{}' is not a valid function",
@@ -73,15 +73,16 @@ impl Fns {
     pub fn exec(func: Self, keyword_name: String) -> Result<String, String> {
         match func {
             Self::Read => Ok(prompt(keyword_name).unwrap()),
-            Self::Env => Ok(Self::env(keyword_name)),
+            //Self::Env => Ok(Self::env(keyword_name)),
             Self::None => Ok(Keywords::from(keyword_name, None)),
         }
     }
 
+    /// NOTE: Why do I need this when I can access it directly ?
     /// This function reads from environment variables and returns the value as a string
-    fn env(name: String) -> String {
-        env::var(name).unwrap()
-    }
+    //fn env(name: String) -> String {
+        //env::var(name).unwrap()
+    //}
 
     pub fn find_and_exec(
         txt: &str,

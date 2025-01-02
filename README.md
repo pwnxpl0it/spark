@@ -12,6 +12,7 @@ Template-based, with easy [TOML](https://toml.io/en/) support!
 - [Idea 🧠](#idea-)
 - [Installation](#installation)
 - [Creating a template 📜](#creating-a-template-)
+- [Dotenv and environment variables ⚙️](#dotenv-and-environment-variables-support-%E2%9A%99%EF%B8%8F)
 - [Functions](#functions)
 - [Git Support 🐙](#git-support-)
 - [Example Templates](#example-templates)
@@ -119,9 +120,38 @@ Here is a table of default placeholders and their values:
 | NOW | Current date and time | `2024-02-23 22:22:38.151417626 +00:00` |
 | NOW_UTC | Current date and time in UTC | `2024-02-23 22:21:17.897444668 UTC` |
 
+In addition to all of this, you can load environment variables with the same syntax., e.g (`{{$XDG_SESSION_TYPE}}`)
+
+### Dotenv and Environment variables Support ⚙️
+I know this might be relative to initialization of a new project but it's helpful 
+You can use dotenv files to replace placeholders in your template, spark will automatically load values from a dotenv file and replace them automatically.
+
+you can use `{{$KEY}}` to replace the value of `KEY` in the dotenv file.
+
+Example:
+
+```dotenv
+REDIS_HOST=localhost
+REDIS_PORT=6379
+```
+
+```toml
+[[files]]
+path="test.py"
+content="""
+print("https://{{$REDIS_HOST}}:{{$REDIS_PORT}}")
+"""
+```
+
+Generated file(s):
+
+```python
+print("https://localhost:6379")
+```
+
 ---
 ### Functions
-you can enhance the functionality of your templates by calling function that can perform actions on the placeholder name/value, like prompting for user input or retrieving values from environment variables, etc.., These placeholders follow the format `{{$keyword:function}}`
+you can enhance the functionality of your templates by calling function that can perform actions on the placeholder name/value, like prompting for user input,These placeholders follow the format `{{$keyword:function}}`
 
 Example: 
 ```toml
@@ -136,7 +166,6 @@ Functions supported by spark:
 | Function   | Description    | Example  |
 |--------------- | --------------- | ---------------  |
 | read   | Asks for user input to replace placeholder with   | `{{$TEST:read}}` |
-| env    | Replace with value from environment variables     | `{{$PATH:env}}` |
 
 also keep in mind that once a function gets called on a keyword you can use `{{$TEST:read}}` or `{{$TEST}}` both are going to be replaced with the value that the function returned.
 
