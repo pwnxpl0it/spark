@@ -74,6 +74,10 @@ impl Keywords {
             chrono::Local::now().day().to_string(),
         );
 
+        for (key, value) in env::vars() {
+            keywords.insert(Self::from(key, None), value);
+        }
+
         keywords
     }
 

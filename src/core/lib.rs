@@ -29,6 +29,6 @@ pub struct Template {
 #[derive(Debug, Clone, Copy)]
 pub enum Fns {
     Read,
-    Env,
+    //Env,
     None,
 }

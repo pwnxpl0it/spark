@@ -6,10 +6,13 @@ mod args;
 use args::Cli;
 mod config;
 use colored::*;
+use dotenv::dotenv;
 
 fn main() {
     let args = Cli::parse();
     let config = Config::new(args.value_of("config").unwrap());
+
+    dotenv().ok();
     let mut keywords = Keywords::init();
 
     keywords.extend(config.clone().get_keywords());
