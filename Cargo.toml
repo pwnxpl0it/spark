@@ -18,7 +18,10 @@ path="src/cli/main.rs"
 chrono = "0.4.34"
 clap = { version = "3.2.17", features = ["derive"] }
 colored = "2.0.0"
+dotenv = "0.15.0"
 indexmap = "2.2.6"
+#jaq = "2.0.0"
+#jaq-std = "2.0.0"
 jq-rs = { version = "0.4.1", features = ["bundled"] }
 liquid = "0.26.9"
 promptly = "0.3.1"
