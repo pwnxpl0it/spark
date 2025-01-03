@@ -1,4 +1,5 @@
 # Spark: A TOML-Based Project Initializer
+![Latest Release](https://img.shields.io/github/v/release/pwnxpl0it/spark?label=Release)  ![Build Status](https://img.shields.io/github/actions/workflow/status/pwnxpl0it/spark/ci.yml?branch=main)  ![License](https://img.shields.io/github/license/pwnxpl0it/spark)  ![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen)  
 
 Spark is a powerful and flexible project initializer designed to simplify your workflow. Using a TOML-based configuration, Spark allows you to quickly create project directories and files based on predefined templates. Whether you're a developer looking for consistency or speed, Spark has you covered.
 
