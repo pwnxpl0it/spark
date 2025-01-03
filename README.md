@@ -1,114 +1,116 @@
-# Spark: A TOML based project initializer.
+# Spark: A TOML-Based Project Initializer
 
-Spark is a TOML-based project initializer that helps you quickly set up project directories and files according to predefined templates. It's designed for developers who want to streamline their workflow by automating the creation of consistent project structures.
+Spark is a powerful and flexible project initializer designed to simplify your workflow. Using a TOML-based configuration, Spark allows you to quickly create project directories and files based on predefined templates. Whether you're a developer looking for consistency or speed, Spark has you covered.
 
-Template-based, with easy [TOML](https://toml.io/en/) support!
+**Features:**
+- **TOML-based templates** for structured project creation.
+- Support for **environment variables** and **dotenv** files.
+- **Dynamic placeholders** and **custom functions** for template customization.
+- **Constant values from configuration**
+- **JSON Support** to automate user input 
+- Integration with **Git** for version control setup.
+- **Liquid templating support** for advanced customization.
+- **And more..**
 
 > [!WARNING]
-> This repo was named "idkmng" before, some issues will contain the previous name.
-
-## Table of Contents
-
-- [Idea 🧠](#idea-)
-- [Installation](#installation)
-- [Creating a template 📜](#creating-a-template-)
-- [Dotenv and environment variables ⚙️](#dotenv-and-environment-variables-support-%E2%9A%99%EF%B8%8F)
-- [Functions](#functions)
-- [Git Support 🐙](#git-support-)
-- [Example Templates](#example-templates)
-  - [Neovim Plugin](#neovim-plugin-click-to-expand)
-  - [Jekyll new blogpost](#jekyll-new-blogpost-click-to-expand)
-  - [Browser (Chrome) Extension](#browser-chrome-extension-click-to-expand)
-- [Loading values from json](#loading-values-from-json)
-- [Liquid Templating Support 🧪](#liquid-templating-support-)
-- [Automated Template generation 🚀](#automated-template-generation-)
-- [Config Keywords ⚙️](#config-keywords-%EF%B8%8F)
-- [Neovim plugin (spark.nvim)](#-neovim-plugin-sparknvim)
+> This project was previously named `idkmng`. Some issues and references may still use the old name.
 
 ---
 
+## Table of Contents
 
-## Idea 🧠:
-Creating a project often involves setting up specific files with unique formats. For instance, a browser extension requires files like:
+- [Why Spark? 🧠](#why-spark-)
+- [Installation](#installation)
+- [Creating Templates 📜](#creating-templates-)
+- [Dynamic Placeholders and Functions](#dynamic-placeholders-and-functions)
+- [Environment Variables ⚙️](#environment-variables-%EF%B8%8F)
+- [Git Integration 🐙](#git-integration-)
+- [Example Templates](#example-templates)
+  - [Neovim Plugin](#neovim-plugin)
+  - [Jekyll Blog Post](#jekyll-blog-post)
+  - [Browser Extension](#browser-extension)
+- [JSON Integration](#json-integration)
+- [Automated Template Generation 🚀](#automated-template-generation-)
+- [Neovim Plugin](#neovim-plugin-)
 
-```
-manifest.json
-Content.js
-etc.. 
-```
-Each file has its own structure and syntax. With spark, you can effortlessly initialize projects with the required files and configurations using a simple command, regardless of the specific format needed.
+---
 
-For example, to set up a browser extension project, you can run:
+## Why Spark? 🧠
+
+Creating projects often involves repetitive tasks, such as setting up directories and boilerplate files. Spark streamlines this process by allowing you to define templates in TOML. For instance, to create a browser extension, simply run:
+
 ```sh
-$ spark browser_extension
+spark browser_extension
 ```
-and 💥 your project files will be ready for your initial commit. Isn’t that amazing?
 
-spark is template-based, allowing you to define multiple templates for the same type of project. This means you can customize the initialization process to suit different requirements, such as variations in manifest.json or other project-specific files.
+And voilà! Your project is ready for the first commit. Spark's flexibility means you can define multiple templates for various use cases, ensuring your projects always start with the structure you need.
 
+---
 
 ## Installation
-If you have Rust 🦀 🚀 installed on your machine run the following command:
+
+### Via Cargo (Requires Rust 🦀)
+Install Spark directly from the GitHub repository:
 
 ```sh
-$ cargo install --git https://www.github.com/pwnxpl0it/spark
+cargo install --git https://github.com/pwnxpl0it/spark
 ```
 
-Alternatively you can go to [Releases](https://github.com/pwnxpl0it/spark/releases) and download the binary
+### Precompiled Binaries
+Download a precompiled binary from the [Releases](https://github.com/pwnxpl0it/spark/releases) page:
 
-```console
-$ sudo tar -xzf spark-<RELEASE>.tar.gz -C /usr/local/bin
-```
-
-Replace <RELEASE> with the version number or tag of the release you want to install.
-
-now you should be able to run `spark` in your terminal!
-
-## Creating a template 📜
-There is a template for creating a template! 
-just run the following command! 
 ```sh
-$ spark new
+sudo tar -xzf spark-<VERSION>.tar.gz -C /usr/local/bin
 ```
-enter template name and you should have one, it will go inside `~/.config/spark/templates/TEMPLATENAME.toml`
-also you can edit that Template too to create you own template that creates a template 🎉,<br>
 
-Default templates path is `~/.config/spark/templates`<br>
+Replace `<VERSION>` with the desired release version.
 
-The template structure is like the following:
+Verify installation by running:
+
+```sh
+spark --version
+```
+
+---
+
+## Creating Templates 📜
+
+To create a new template, run:
+
+```sh
+spark new
+```
+
+This will generate a basic template file in `~/.config/spark/templates/<TEMPLATE_NAME>.toml`. 
+
+The template structure is as follows:
+
 ```toml
 [info]
-name = ""
-description = ""
-author = ""
+name = "Template Name"
+description = "Template Description"
+author = "Your Name"
 
-[[files]] # file1 
-path="/path/to/file1"
-content="""
-
+[[files]]
+path = "file1.txt"
+content = """
 Content of file 1
-
 """
 
-[[files]] # file2
-path="/path/to/file2"
-content="""
-
+[[files]]
+path = "file2.txt"
+content = """
 Content of file 2
-
 """
-
-#etc...
 ```
-
 > [!TIP]
-> Info section is not required and can be removed
+> **Tip**: The `[info]` section is optional and can be removed.
 
-placeholders have a generic format of `{{$keyword}}`
+### Placeholder Format
+Use `{{$PLACEHOLDER}}` for dynamic content replacement. Common placeholders include:
 
-Here is a table of default placeholders and their values: 
 
-| Keyword/placeholder   | Value     | Example          |
+| placeholder   | Value     | Example          |
 |--------------- | ---------------  | ---------------  |
 | PROJECTNAME   | Asks for project name |                   |
 | CURRENTDIR    | Current directory | pwd=/foo/bar => `bar`|
@@ -120,54 +122,59 @@ Here is a table of default placeholders and their values:
 | NOW | Current date and time | `2024-02-23 22:22:38.151417626 +00:00` |
 | NOW_UTC | Current date and time in UTC | `2024-02-23 22:21:17.897444668 UTC` |
 
-In addition to all of this, you can load environment variables with the same syntax., e.g (`{{$XDG_SESSION_TYPE}}`)
 
-### Dotenv and Environment variables Support ⚙️
-I know this might be relative to initialization of a new project but it's helpful 
-You can use dotenv files to replace placeholders in your template, spark will automatically load values from a dotenv file and replace them automatically.
 
-you can use `{{$KEY}}` to replace the value of `KEY` in the dotenv file.
+## Dynamic Placeholders and Functions
 
-Example:
+Enhance templates with functions for additional customization. Functions follow the format `{{$PLACEHOLDER:FUNCTION}}`.
 
-```dotenv
-REDIS_HOST=localhost
-REDIS_PORT=6379
-```
+### Supported Functions
+| Function | Description                         | Example                |
+|----------|-------------------------------------|------------------------|
+| `read`   | Prompts for user input              | `{{$VAR:read}}`        |
+
+Example template snippet:
 
 ```toml
 [[files]]
-path="test.py"
-content="""
-print("https://{{$REDIS_HOST}}:{{$REDIS_PORT}}")
+path = "example.txt"
+content = """
+User input: {{$USER_INPUT:read}}
 """
-```
-
-Generated file(s):
-
-```python
-print("https://localhost:6379")
 ```
 
 ---
-### Functions
-you can enhance the functionality of your templates by calling function that can perform actions on the placeholder name/value, like prompting for user input,These placeholders follow the format `{{$keyword:function}}`
 
-Example: 
+## Environment Variables ⚙️
+
+Spark supports placeholders that map to environment variables. You can also use `.env` files for placeholder substitution.
+
+Example `.env` file:
+
+```env
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+Example template:
+
 ```toml
-# --snip
-content="""
-{{$TEST:read}}
+[[files]]
+path = "config.py"
+content = """
+DB_HOST = "{{$DB_HOST}}"
+DB_PORT = "{{$DB_PORT}}"
 """
 ```
 
-Functions supported by spark:
+Generated file:
 
-| Function   | Description    | Example  |
-|--------------- | --------------- | ---------------  |
-| read   | Asks for user input to replace placeholder with   | `{{$TEST:read}}` |
+```python
+DB_HOST = "localhost"
+DB_PORT = "5432"
+```
 
-also keep in mind that once a function gets called on a keyword you can use `{{$TEST:read}}` or `{{$TEST}}` both are going to be replaced with the value that the function returned.
+---
 
 ### Template Options
 
@@ -178,22 +185,29 @@ Template options in spark provide a way to customize the project setup by allowi
 | git   | Initialize Git repository in the project directory   | `git=true` |
 | project_root    | Set the project name to a constant value or ask for user input  | `project_root="new_project"`, `project_root="{{$PROJECTNAME}}"` |
 | use_liquid    | Enable/Disable Liquid templating in the template     | `use_liquid=true` |
-| use_json    | embed JSON in the template     | `use_json='{"id": 1, "name": "John"}'` |
+| use_json    | Embed JSON in the template     | `use_json='{"id": 1, "name": "John"}'` |
 
-#### Git Support 🐙
-Initialize Git during project creation by using:
 
-```console
-$ spark /path/to/template --git
+## Git Integration 🐙
+
+Initialize a Git repository during project creation:
+
+```sh
+spark /path/to/template --git
 ```
 
-Or include Git option in the template itself:
+Alternatively, include Git setup in the template:
 
 ```toml
 [options]
-git=true
+git = true
+#project_root = "my_project"
 project_root="{{$PROJECTNAME}}" # will prompt for the project name but you can set this to constant value
 ```
+
+---
+
+## Example Templates
 
 ### Example Templates
 Here are a few examples:
@@ -302,14 +316,14 @@ console.log("Hello world!")
 </details>
 
 
-<!--TODO: Add more examples-->
 
-## Loading values from json
+---
+
+## JSON Integration
+
 You can use json to replace placeholders in your template, spark will automatically load values from a json file and replace them automatically
 
-spark uses JSON Query language to load values from json nodes.
-
-This is made possible using Rust's [jq-rs crate 🦀](https://github.com/onelson/jq-rs) which has bindings to libjq.
+Spark uses JSON Query language to load values from json nodes.
 
 Here is an example:
 
@@ -324,7 +338,7 @@ Here is an example:
 }
 ```
 
-example template:
+Example template:
 
 ```toml
 [[files]]
@@ -358,7 +372,7 @@ Response Status: 200 OK
 
 ## Liquid Templating Support 🧪
 
-`spark` now supports [Liquid](https://shopify.github.io/liquid/) templating alongside its own custom syntax. This allows you to benefit from Liquid's logic (loops, conditionals) while continuing to use `spark`'s powerful keyword replacement.
+Spark now supports [Liquid](https://shopify.github.io/liquid/) templating alongside its own custom syntax. This allows you to benefit from Liquid's logic (loops, conditionals) while continuing to use `spark`'s powerful keyword replacement.
 
 #### **Example:**
 ```toml
@@ -371,7 +385,7 @@ Example! {{ i }} {{ "{{$file:read}}" | append: ".html" }}
 """
 ```
 
-- `spark` replaces `{{$file:read}}` with user input.
+- *Spark* replaces `{{$file:read}}` with user input.
 - Liquid handles loops and string manipulation.
 
 #### **Result:**
