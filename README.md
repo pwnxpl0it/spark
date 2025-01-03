@@ -25,6 +25,7 @@ Spark is a powerful and flexible project initializer designed to simplify your w
 - [Creating Templates 📜](#creating-templates-)
 - [Dynamic Placeholders and Functions](#dynamic-placeholders-and-functions)
 - [Environment Variables ⚙️](#environment-variables-%EF%B8%8F)
+- [Template Options](#template-options)
 - [Git Integration 🐙](#git-integration-)
 - [Example Templates](#example-templates)
   - [Neovim Plugin](#neovim-plugin)
