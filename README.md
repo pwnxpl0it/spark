@@ -218,6 +218,10 @@ Here are a few examples:
   <summary>Neovim Plugin [Click to expand]</summary>
 
 ```toml
+[options]
+git=true
+project_root="{{$PROJECTNAME}}"
+ 
 [info]
 name = "Neovim Plugin"
 description = "A template for nvim plugin"
@@ -283,7 +287,11 @@ This one is just for creating a really BASIC chrome extension.
 
 	
 ```toml
-[info] # Generated using `spark new` btw
+[options]
+git=true
+project_root="{{$PROJECTNAME}}"
+
+[info]
 name = "browser_extension"
 description = "A Template for creating a browser extension"
 author = "Mohamed Tarek @pwnxpl0it"
