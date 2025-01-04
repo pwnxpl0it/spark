@@ -32,6 +32,7 @@ Spark is a powerful and flexible project initializer designed to simplify your w
   - [Jekyll Blog Post](#jekyll-blog-post)
   - [Browser Extension](#browser-extension)
 - [JSON Integration](#json-integration)
+- [Liquid Templating Support 🧪](#liquid-templating-support)
 - [Automated Template Generation 🚀](#automated-template-generation-)
 - [Neovim Plugin](#neovim-plugin-)
 
