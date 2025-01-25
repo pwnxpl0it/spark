@@ -256,6 +256,101 @@ require("{{$PROJECTNAME}}")
 
 
 <details>
+<summary>Python package [Click to expand]</summary>
+
+```toml
+[info]
+name = "Python Package"
+description = "A template for creating a Python package."
+author = "Mohamed Tarek @pwnxpl0it"
+
+[options]
+git = true
+project_root = "{{$PROJECTNAME}}"
+use_liquid = true
+
+[[files]]
+path = "{{$PROJECTNAME}}/{{$PROJECTNAME}}/__init__.py"
+content = """
+\"\"\"
+{{$PROJECTNAME}}: {{$DESCRIPTION:read}}
+\"\"\"
+
+__version__ = "0.1.0"
+"""
+
+[[files]]
+path = "{{$PROJECTNAME}}/setup.py"
+content = """
+from setuptools import setup, find_packages
+
+setup(
+    name="{{$PROJECTNAME}}",
+    version="0.1.0",
+    author="{{$AUTHOR:read}}",
+    description="{{$DESCRIPTION:read}}",
+    packages=find_packages(),
+    install_requires=[],
+)
+"""
+
+[[files]]
+path = "{{$PROJECTNAME}}/README.md"
+content = """
+# {{ "{{$PROJECTNAME}}" | capitalize }}
+
+{{$DESCRIPTION}}
+
+## Installation
+
+```sh
+pip install {{$PROJECTNAME}}
+/```
+
+## Usage
+
+```python
+import {{$PROJECTNAME}}
+
+print({{$PROJECTNAME}}.__version__)
+/```
+
+## License
+This project is licensed under the MIT License.
+"""
+
+[[files]]
+path = "{{$PROJECTNAME}}/.gitignore"
+content = """
+# Ignore Python build files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+"""
+
+[[files]]
+path = "{{$PROJECTNAME}}/tests/test_{{$PROJECTNAME}}.py"
+content = """
+import unittest
+import {{$PROJECTNAME}}
+
+class Test{{ "{{$PROJECTNAME}}" | capitalize }}(unittest.TestCase):
+    def test_version(self):
+        self.assertEqual({{$PROJECTNAME}}.__version__, "0.1.0")
+
+if __name__ == "__main__":
+    unittest.main()
+"""
+```
+
+</details>
+
+<details>
     <summary>Jekyll new blogpost [Click to expand]</summary>
 
 I use this template to create a new post in my blog directly from CLI,This one here uses more keywords and includes a private BLOGPATH placeholder that it's value is loaded from config file.
@@ -413,6 +508,12 @@ With this integration, you can create dynamic and flexible templates that combin
 > [!TIP]
 > Liquid is enabled by default in templates. To disable it, set `use_liquid=false` in the template options.
 > or use `--no-liquid` flag when running `spark`
+
+> [!IMPORTANT]
+> When using Spark keywords inside Liquid templates, wrap them in double curly braces like this:
+>   ```liquid
+>     {{ "{{$PLACEHOLDER}}" | capitalize }}
+>   ```
 
 ## Automated Template generation 🚀
 Also there is one more time saving way! if you have some files in `/foo/bar/` you can just run `spark init` and it will create a template for you with directory name `bar.toml` and it will have all your files in it! 🌸
