@@ -1,90 +1,60 @@
 use crate::Keywords;
-use chrono::Datelike;
+use chrono::{Datelike, Local, Utc};
 use std::{collections::HashMap, env};
 
-pub const KEYWORDS_FORMAT: &str = "{{$%s:f}}";
-
 impl Keywords {
-    pub fn from(name: String, function: Option<String>) -> String {
-        if let Some(function) = function {
-            KEYWORDS_FORMAT
-                .to_string()
-                .replace("%s", &name)
-                .replace('f', &function)
+    pub fn from(name: &str, function: Option<&str>) -> String {
+        if let Some(func) = function {
+            format!("{{{{${}:{}}}}}", name, func)
         } else {
-            KEYWORDS_FORMAT
-                .to_string()
-                .replace("%s", &name)
-                .replace(":f", "")
+            format!("{{{{${}}}}}", name)
         }
     }
 
-    pub fn strip(keyword: &String) -> String {
-        keyword.replace("{{$", "").replace("}}", "")
+    pub fn strip(keyword: &str) -> String {
+        keyword
+            .trim_matches(|c| c == '{' || c == '$' || c == '}')
+            .to_string()
     }
 
     pub fn init() -> HashMap<String, String> {
         let mut keywords = HashMap::new();
-        keywords.insert(
-            Self::from(String::from("HOME"), None),
-            env::var("HOME").unwrap(),
-        );
-        keywords.insert(
-            Self::from(String::from("PROJECTNAME"), None),
-            "".to_string(),
-        );
-        keywords.insert(
-            Self::from(String::from("CURRENTDIR"), None),
-            env::current_dir()
-                .unwrap()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string(),
-        );
 
-        keywords.insert(
-            Self::from(String::from("NOW_UTC"), None),
-            chrono::Utc::now().to_string(),
-        );
+        if let Ok(home) = env::var("HOME") {
+            keywords.insert(Self::from("HOME", None), home);
+        }
 
-        keywords.insert(
-            Self::from(String::from("NOW"), None),
-            chrono::Local::now().to_string(),
-        );
+        keywords.insert(Self::from("PROJECTNAME", None), String::new());
 
-        keywords.insert(
-            Self::from(String::from("YYYY"), None),
-            chrono::Local::now().year().to_string(),
-        );
+        if let Ok(current_dir) = env::current_dir() {
+            if let Some(dir_name) = current_dir.file_name().and_then(|n| n.to_str()) {
+                keywords.insert(Self::from("CURRENTDIR", None), dir_name.to_string());
+            }
+        }
 
+        keywords.insert(Self::from("NOW_UTC", None), Utc::now().to_string());
+        keywords.insert(Self::from("NOW", None), Local::now().to_string());
+        keywords.insert(Self::from("YYYY", None), Local::now().year().to_string());
         keywords.insert(
-            Self::from(String::from("YY"), None),
-            chrono::Local::now().format("%y").to_string(),
+            Self::from("YY", None),
+            Local::now().format("%y").to_string(),
         );
-
-        keywords.insert(
-            Self::from(String::from("MM"), None),
-            chrono::Local::now().month().to_string(),
-        );
-
-        keywords.insert(
-            Self::from(String::from("DD"), None),
-            chrono::Local::now().day().to_string(),
-        );
+        keywords.insert(Self::from("MM", None), Local::now().month().to_string());
+        keywords.insert(Self::from("DD", None), Local::now().day().to_string());
 
         for (key, value) in env::vars() {
-            keywords.insert(Self::from(key, None), value);
+            keywords.insert(Self::from(&key, None), value);
         }
 
         keywords
     }
 
-    pub fn replace_keywords(keywords: &HashMap<String, String>, mut data: String) -> String {
+    pub fn replace_keywords(keywords: &HashMap<String, String>, data: &str) -> String {
+        let mut output = data.to_string();
         for (key, value) in keywords.iter() {
-            data = data.replace(key, value);
+            output = output.replace(key, value);
         }
-        data
+        output
     }
+
 }

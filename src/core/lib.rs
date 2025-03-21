@@ -1,10 +1,11 @@
 pub mod funcs;
 pub mod keywords;
-mod templates;
+pub mod templates;
 mod utils;
 use serde::{Deserialize, Serialize};
-pub struct Keywords {}
 pub use templates::Options;
+
+pub struct Keywords {}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Information {
@@ -31,4 +32,10 @@ pub enum Fns {
     Read,
     //Env,
     None,
+}
+
+impl File {
+    pub fn new(path: String, content: String) -> Self {
+        Self { path, content }
+    }
 }
