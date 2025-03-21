@@ -1,12 +1,13 @@
 use crate::utils::*;
+use crate::*;
 use colored::Colorize;
 use promptly::prompt;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::Path};
-pub mod file;
 pub mod options;
-use crate::*;
+
+pub const KEYWORDS_REGEX: &str = r"\{\{\$.*?\}\}";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Options {
@@ -14,18 +15,6 @@ pub struct Options {
     pub use_liquid: Option<bool>,
     pub json_data: Option<serde_json::Value>,
     pub project_root: String,
-}
-
-pub const KEYWORDS_REGEX: &str = r"\{\{\$.*?\}\}";
-
-impl Default for Template {
-    fn default() -> Self {
-        Self {
-            options: Some(Options::default()),
-            info: None,
-            files: None,
-        }
-    }
 }
 
 impl Template {
@@ -41,48 +30,48 @@ impl Template {
         self.options = Some(options);
     }
 
-    pub fn dump_options(&mut self) -> Option<Options> {
-        self.options.as_ref()?;
-        Some(self.options.clone().unwrap())
+    pub fn dump_options(&self) -> Option<Options> {
+        self.options.clone()
     }
 
-    pub fn generate(dest: &str) {
-        let mut files: Vec<File> = Vec::new();
+    pub fn generate(dest: &str) -> Result<(), String> {
+        let files: Vec<File> = list_files(Path::new("./"))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|file| !file.contains(".git"))
+            .map(|file| {
+                File::new(
+                    file.replace("./", ""),
+                    fs::read_to_string(&file).unwrap_or_default(),
+                )
+            })
+            .collect();
 
-        list_files(Path::new("./")).iter().for_each(|file| {
-            //TODO: Add more to ignore list maybe adding a --ignore flag will be good
-            if !file.contains(".git") {
-                let file = File::from(file.to_string().replace("./", ""), {
-                    match fs::read_to_string(file) {
-                        Ok(content) => content,
-                        Err(e) => panic!("{}:{}", file.red().bold(), e),
-                    }
-                });
-                files.push(file); // Push to Files Vector
-            }
-        });
-
-        let template = Template {
+        let template = Self {
             info: None,
             files: Some(files),
             options: None,
         };
 
-        let toml_string = toml::to_string_pretty(&template).expect("Failed to create toml string");
-        fs::write(dest, toml_string).unwrap();
+        let toml_string = toml::to_string_pretty(&template)
+            .map_err(|e| format!("Failed to serialize template: {}", e))?;
+
+        fs::write(dest, toml_string)
+            .map_err(|e| format!("Failed to write template to file: {}", e))?;
+
+        println!(
+            "{}: Template successfully generated at {}",
+            "Success".green(),
+            dest
+        );
+        Ok(())
     }
 
-    pub fn liquify(string: &str) -> String {
-        let parser = liquid::ParserBuilder::with_stdlib().build().unwrap();
+    pub fn liquify(string: &str) -> Result<String, liquid::Error> {
+        let parser = liquid::ParserBuilder::with_stdlib().build()?;
         let empty_globals = liquid::Object::new();
 
-        match parser.parse(string) {
-            Ok(template) => template.render(&empty_globals).unwrap(),
-            Err(e) => {
-                eprintln!("{}: parsing template: {}", "error".red().bold(), e);
-                String::new()
-            }
-        }
+        parser.parse(string)?.render(&empty_globals)
     }
 
     fn handle_project_name(
@@ -109,49 +98,47 @@ impl Template {
         }
     }
 
-    pub fn extract(mut self, keywords: &mut HashMap<String, String>) {
-        let re = Regex::new(KEYWORDS_REGEX).expect("Invalid keywords regex");
-        let mut options = self.dump_options().unwrap_or_default();
+    pub fn extract(&mut self, keywords: &mut HashMap<String, String>) -> Result<(), String> {
+        let re = Regex::new(KEYWORDS_REGEX).map_err(|e| format!("Invalid regex: {}", e))?;
+        let mut options = self.options.take().unwrap_or_default();
         let json_data = options.json_data.clone().unwrap_or(serde_json::Value::Null);
         let mut project = String::new();
 
-        self.files
-            .expect("No files table")
-            .into_iter()
-            .for_each(|file| {
+        if let Some(files) = self.files.take() {
+            for file in files {
                 Fns::find_and_exec(&file.content, keywords, &re, &json_data);
                 Fns::find_and_exec(&file.path, keywords, &re, &json_data);
 
                 if project.is_empty() {
-                    project = match Self::handle_project_name(keywords, &mut options, &file) {
-                        Ok(name) => name,
-                        Err(e) => {
-                            eprintln!("Error handling project name: {}", e);
-                            return;
-                        }
-                    };
+                    project = Self::handle_project_name(keywords, &mut options, &file)
+                        .map_err(|e| format!("Error handling project name: {}", e))?;
                 }
 
-                let dir_path = file.path.split('/').collect::<Vec<_>>();
-                if dir_path.len() > 1 {
-                    create_dirs(&shellexpand::tilde(&Keywords::replace_keywords(
-                        keywords,
-                        file.path.replace(dir_path.last().unwrap(), ""),
-                    )));
+                let dir_path = Path::new(&file.path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                if !dir_path.is_empty() {
+                    create_dirs(&Keywords::replace_keywords(keywords, &dir_path));
                 }
 
-                let output = Keywords::replace_keywords(keywords, file.content);
-                let path = Keywords::replace_keywords(keywords, file.path);
+                let output = Keywords::replace_keywords(keywords, &file.content);
+                let path = Keywords::replace_keywords(keywords, &file.path);
 
-                if options.use_liquid.is_some() {
-                    let liquified = Self::liquify(&output);
-                    write_content(&shellexpand::tilde(&path), liquified);
+                let final_output = if options.use_liquid.unwrap_or(false) {
+                    Self::liquify(&output).map_err(|e| format!("Liquid error: {}", e))?
                 } else {
-                    write_content(&shellexpand::tilde(&path), output);
-                }
-            });
+                    output
+                };
+
+                write_content(&path, &final_output)
+                    .map_err(|e| format!("File write error: {}", e))?;
+            }
+        }
 
         options.handle();
+        Ok(())
     }
 
     pub fn show_info(template: &Self) {
