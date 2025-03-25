@@ -68,6 +68,8 @@ main() {
     initialize_config
     test_new_template
     check_config_files
+	echo -e "${RED} Sleeping for 5 seconds before restoring templates...${NC}"
+	sleep 5
     cleanup
     restore_templates
     echo -e "${GREEN}[+] All tests completed.${NC}"
