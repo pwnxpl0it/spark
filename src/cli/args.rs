@@ -49,6 +49,13 @@ impl Cli {
                     .takes_value(false)
                     .requires("template"),
             )
+            .arg(
+                Arg::new("keywords")
+                .help("Key, value pairs to be replaced,\nYou can use this to skip user inputs,\nExample: 'name=spark, author=pwnxpl0it'")
+                .long("from")
+                .takes_value(true)
+                .requires("template")
+            )
             .subcommand(Command::new("init").about("Creates a template for the current directory"))
             .get_matches()
     }
