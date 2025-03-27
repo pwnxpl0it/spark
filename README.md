@@ -24,6 +24,7 @@ Spark is a powerful and flexible project initializer designed to simplify your w
 - [Installation](#installation)
 - [Creating Templates 📜](#creating-templates-)
 - [Dynamic Placeholders and Functions](#dynamic-placeholders-and-functions)
+- [Supply/Override Values from CLI (`--from`) 🏗️](#supplyoverride-values-from-cli---from-️)
 - [Environment Variables ⚙️](#environment-variables-%EF%B8%8F)
 - [Template Options](#template-options)
 - [Git Integration 🐙](#git-integration-)
@@ -145,6 +146,47 @@ content = """
 User input: {{$USER_INPUT:read}}
 """
 ```
+
+---
+### **Supply/Override Values from CLI (`--from`)** 🏗️  
+
+You can now pass predefined values directly from the command line using the `--from` flag. This allows you to override placeholders and avoid interactive prompts.
+
+#### **Usage:**
+```sh
+spark template --from="name=spark, author=pwnxpl0it, hackerman=yes"
+```
+
+This expands the keywords hashmap and skips calling functions like `:read`, meaning users can directly provide values from the command line.
+
+#### **Example Template:**
+```toml
+[[files]]
+path = "README.md"
+content = """
+# {{$name}}
+
+Created by {{$author}}
+
+Hackerman mode: {{$hackerman}}
+"""
+```
+
+#### **Running Spark:**
+```sh
+spark /path/to/template --from="name=MyProject, author=JohnDoe, hackerman=no"
+```
+
+#### **Generated File (`README.md`):**
+```md
+# MyProject
+
+Created by JohnDoe
+
+Hackerman mode: no
+```
+
+With this feature, you can fully automate project creation without interactive prompts! 🚀
 
 ---
 
