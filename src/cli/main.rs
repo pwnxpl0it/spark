@@ -14,6 +14,18 @@ fn main() {
     let mut keywords = Keywords::init();
     keywords.extend(config.clone().get_keywords());
 
+    if args.is_present("keywords") {
+        let pairs = args.value_of("keywords").unwrap();
+        let keys: Vec<&str> = pairs.split(',').collect();
+        for key in keys {
+            let (keyword, value) = key.split_once('=').unwrap();
+            keywords.insert(
+                Keywords::from(keyword.trim(), None),
+                value.trim().to_string(),
+            );
+        }
+    }
+
     if args.subcommand_matches("init").is_some() {
         let dest = format!(
             "{}.toml",

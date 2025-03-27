@@ -70,6 +70,12 @@ impl Fns {
     ) {
         if let Some(found) = Self::find(txt, keywords, re) {
             for (keyword_name, (keyword, function)) in found {
+                let final_keyword = Self::remove_fn_name(&keyword, function);
+                if keywords.contains_key(&final_keyword) {
+                    keywords.insert(keyword, keywords[&final_keyword].clone());
+                    continue;
+                }
+
                 if !json_data.is_null() && keyword_name.contains('.') {
                     if let Ok(value) = jq_rs::run(&keyword_name, &json_data.to_string()) {
                         // Remove quotes from the value
@@ -90,7 +96,7 @@ impl Fns {
                         }
                         _ => {
                             keywords.insert(keyword.clone(), value.clone());
-                            keywords.insert(Self::remove_fn_name(&keyword, function), value);
+                            keywords.insert(final_keyword, value);
                         }
                     }
                 }
