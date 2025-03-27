@@ -61,7 +61,7 @@ impl Template {
 
         println!(
             "{}: Template successfully generated at {}",
-            "Success".green(),
+            "Success".green().bold().blink(),
             dest
         );
         Ok(())
@@ -98,46 +98,69 @@ impl Template {
         }
     }
 
+    fn process_file(
+        file: &File,
+        keywords: &mut HashMap<String, String>,
+        re: &Regex,
+        json_data: &serde_json::Value,
+        options: &mut Options,
+    ) -> Result<String, String> {
+        Fns::find_and_exec(&file.content, keywords, re, json_data);
+        Fns::find_and_exec(&file.path, keywords, re, json_data);
+
+        let project = Self::handle_project_name(keywords, options, file)
+            .map_err(|e| format!("Error handling project name: {}", e))?;
+
+        let dir_path = Path::new(&file.path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        if !dir_path.is_empty() {
+            create_dirs(&Keywords::replace_keywords(keywords, &dir_path));
+        }
+
+        Ok(project)
+    }
+
+    fn prepare_file_content(
+        file_content: &str,
+        file_path: &str,
+        keywords: &HashMap<String, String>,
+        options: &Options,
+    ) -> Result<(String, String), String> {
+        let output = Keywords::replace_keywords(keywords, file_content);
+        let path = Keywords::replace_keywords(keywords, file_path);
+
+        let final_output = if options.use_liquid.unwrap_or(false) {
+            Self::liquify(&output).map_err(|e| format!("Liquid error: {}", e))?
+        } else {
+            output
+        };
+
+        Ok((path, final_output))
+    }
+
     pub fn extract(&mut self, keywords: &mut HashMap<String, String>) -> Result<(), String> {
         let re = Regex::new(KEYWORDS_REGEX).map_err(|e| format!("Invalid regex: {}", e))?;
         let mut options = self.options.take().unwrap_or_default();
         let json_data = options.json_data.clone().unwrap_or(serde_json::Value::Null);
+        let files = self.files.take().unwrap_or_default();
         let mut project = String::new();
 
-        if let Some(files) = self.files.take() {
-            for file in files {
-                Fns::find_and_exec(&file.content, keywords, &re, &json_data);
-                Fns::find_and_exec(&file.path, keywords, &re, &json_data);
-
-                if project.is_empty() {
-                    project = Self::handle_project_name(keywords, &mut options, &file)
-                        .map_err(|e| format!("Error handling project name: {}", e))?;
-                }
-
-                let dir_path = Path::new(&file.path)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_default();
-
-                if !dir_path.is_empty() {
-                    create_dirs(&Keywords::replace_keywords(keywords, &dir_path));
-                }
-
-                let output = Keywords::replace_keywords(keywords, &file.content);
-                let path = Keywords::replace_keywords(keywords, &file.path);
-
-                let final_output = if options.use_liquid.unwrap_or(false) {
-                    Self::liquify(&output).map_err(|e| format!("Liquid error: {}", e))?
-                } else {
-                    output
-                };
-
-                write_content(&path, &final_output)
-                    .map_err(|e| format!("File write error: {}", e))?;
+        for file in files {
+            if project.is_empty() {
+                project = Self::process_file(&file, keywords, &re, &json_data, &mut options)?;
             }
+
+            let (path, final_output) =
+                Self::prepare_file_content(&file.content, &file.path, keywords, &options)?;
+
+            write_content(&path, &final_output).map_err(|e| format!("File write error: {}", e))?;
         }
 
         options.handle();
+
         Ok(())
     }
 
