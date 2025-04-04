@@ -56,7 +56,7 @@ impl Template {
         let toml_string = toml::to_string_pretty(&template)
             .map_err(|e| format!("Failed to serialize template: {}", e))?;
 
-        fs::write(dest, toml_string)
+        write_content(dest, &toml_string)
             .map_err(|e| format!("Failed to write template to file: {}", e))?;
 
         println!(
