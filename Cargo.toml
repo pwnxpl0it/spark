@@ -22,7 +22,8 @@ dotenv = "0.15.0"
 indexmap = "2.2.6"
 #jaq = "2.0.0"
 #jaq-std = "2.0.0"
-jq-rs = { version = "0.4.1", features = ["bundled"] }
+#jq-rs = {version = "0.4.1", features = ["bundled"]}
+jq-rs = "0.4.1"
 liquid = "0.26.9"
 promptly = "0.3.1"
 regex = "1.7.1"
