@@ -107,11 +107,9 @@ impl Template {
     ) -> Result<String, String> {
         Fns::find_and_exec(&file.content, keywords, re, json_data);
         Fns::find_and_exec(&file.path, keywords, re, json_data);
-
-        let project = Self::handle_project_name(keywords, options, file)
-            .map_err(|e| format!("Error handling project name: {}", e))?;
-
-        Ok(project)
+        
+        Self::handle_project_name(keywords, options, file)
+            .map_err(|e| format!("Error handling project name: {}", e))
     }
 
     fn prepare_file_content(
