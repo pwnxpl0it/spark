@@ -111,15 +111,6 @@ impl Template {
         let project = Self::handle_project_name(keywords, options, file)
             .map_err(|e| format!("Error handling project name: {}", e))?;
 
-        let dir_path = Path::new(&file.path)
-            .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        if !dir_path.is_empty() {
-            create_dirs(&Keywords::replace_keywords(keywords, &dir_path));
-        }
-
         Ok(project)
     }
 
@@ -137,6 +128,13 @@ impl Template {
         } else {
             output
         };
+
+        if let Some(dir) = Path::new(&path).parent() {
+            let dir_str = dir.to_string_lossy();
+            if !dir_str.is_empty() {
+                create_dirs(&dir_str);
+            }
+        }
 
         Ok((path, final_output))
     }
