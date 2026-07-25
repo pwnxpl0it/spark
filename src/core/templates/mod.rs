@@ -403,4 +403,211 @@ mod tests {
 
         let _ = fs::remove_dir_all(&out_dir);
     }
+
+    /// Realistic embedded TOML template used by JSON integration tests.
+    fn embedded_json_template_toml(out_dir: &str) -> String {
+        format!(
+            r#"
+[info]
+name = "json_demo"
+author = "spark-tests"
+description = "Embedded template for JSON integration tests"
+
+[options]
+git = false
+use_liquid = false
+project_root = "json_demo"
+
+[[files]]
+path = "{out}/{{{{$.project.slug}}}}/README.md"
+content = """
+# {{{{$.user.name}}}}'s Project
+
+User ID: {{{{$.user.id}}}}
+Email: {{{{$.user.email}}}}
+Status: {{{{$.status[0]}}}}
+"""
+
+[[files]]
+path = "{out}/{{{{$.project.slug}}}}/src/{{{{$.user.id}}}}.txt"
+content = """
+package {{{{$.project.slug}}}}
+owner = {{{{$.user.name}}}}
+"""
+"#,
+            out = out_dir
+        )
+    }
+
+    fn embedded_json_data() -> serde_json::Value {
+        serde_json::json!({
+            "user": {
+                "id": "12345",
+                "name": "John Doe",
+                "email": "john.doe@example.com"
+            },
+            "project": {
+                "slug": "demo_app"
+            },
+            "status": ["200 OK"]
+        })
+    }
+
+    #[test]
+    fn extract_from_embedded_template_with_json_data() {
+        let out_dir = std::env::temp_dir().join("spark_test_embedded_json_template");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let toml_str = embedded_json_template_toml(&out_dir.to_string_lossy());
+        let mut template: Template =
+            toml::from_str(&toml_str).expect("embedded template should parse");
+
+        let mut options = template.dump_options().unwrap_or_default();
+        options.set_json(embedded_json_data());
+        options.use_liquid = Some(false);
+        template.set_options(options);
+
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        let readme = out_dir.join("demo_app").join("README.md");
+        let profile = out_dir.join("demo_app").join("src").join("12345.txt");
+
+        assert!(readme.is_file(), "missing README at {:?}", readme);
+        assert!(profile.is_file(), "missing profile at {:?}", profile);
+
+        let readme_content = fs::read_to_string(&readme).unwrap();
+        assert!(readme_content.contains("# John Doe's Project"));
+        assert!(readme_content.contains("User ID: 12345"));
+        assert!(readme_content.contains("Email: john.doe@example.com"));
+        assert!(readme_content.contains("Status: 200 OK"));
+
+        let profile_content = fs::read_to_string(&profile).unwrap();
+        assert!(profile_content.contains("package demo_app"));
+        assert!(profile_content.contains("owner = John Doe"));
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn extract_reads_json_from_file_like_cli() {
+        let out_dir = std::env::temp_dir().join("spark_test_json_file");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let json_path = out_dir.join("data.json");
+        fs::write(
+            &json_path,
+            r#"{
+                "user": { "id": "99", "name": "Ada", "email": "ada@example.com" },
+                "project": { "slug": "from_file" },
+                "status": ["201 Created"]
+            }"#,
+        )
+        .unwrap();
+
+        let json_data: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&json_path).unwrap()).unwrap();
+
+        let toml_str = embedded_json_template_toml(&out_dir.to_string_lossy());
+        let mut template: Template = toml::from_str(&toml_str).unwrap();
+
+        let mut options = template.dump_options().unwrap_or_default();
+        options.set_json(json_data);
+        options.use_liquid = Some(false);
+        template.set_options(options);
+
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        let readme = out_dir.join("from_file").join("README.md");
+        let content = fs::read_to_string(&readme).expect("README should be written");
+        assert!(content.contains("# Ada's Project"));
+        assert!(content.contains("User ID: 99"));
+        assert!(content.contains("Status: 201 Created"));
+
+        let src_file = out_dir.join("from_file").join("src").join("99.txt");
+        assert!(src_file.is_file());
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn template_parses_embedded_json_data_option_from_toml() {
+        let toml_str = r#"
+[info]
+name = "with_json"
+
+[options]
+git = false
+use_liquid = false
+project_root = "proj"
+
+[options.json_data]
+status = ["ok"]
+
+[options.json_data.user]
+id = "1"
+name = "Neo"
+
+[[files]]
+path = "ignored.txt"
+content = "x"
+"#;
+        let template: Template = toml::from_str(toml_str).expect("toml with json_data should parse");
+        let options = template.options.expect("options present");
+        let json = options.json_data.expect("json_data present");
+        assert_eq!(json["user"]["name"], "Neo");
+        assert_eq!(json["status"][0], "ok");
+    }
+
+    #[test]
+    fn extract_uses_json_data_embedded_in_template_options() {
+        let out_dir = std::env::temp_dir().join("spark_test_toml_embedded_json");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let toml_str = format!(
+            r#"
+[info]
+name = "toml_json"
+
+[options]
+git = false
+use_liquid = false
+project_root = "proj"
+
+[options.json_data]
+status = ["embedded"]
+
+[options.json_data.user]
+id = "7"
+name = "Trinity"
+email = "trinity@matrix"
+
+[options.json_data.project]
+slug = "matrix"
+
+[[files]]
+path = "{out}/{{{{$.project.slug}}}}/hello.txt"
+content = """
+Hello {{{{$.user.name}}}} ({{{{$.user.id}}}})
+Status: {{{{$.status[0]}}}}
+"""
+"#,
+            out = out_dir.display()
+        );
+
+        let mut template: Template = toml::from_str(&toml_str).unwrap();
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        let hello = out_dir.join("matrix").join("hello.txt");
+        let content = fs::read_to_string(&hello).unwrap();
+        assert_eq!(
+            content,
+            "Hello Trinity (7)\nStatus: embedded\n"
+        );
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
 }
