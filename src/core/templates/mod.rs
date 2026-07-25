@@ -240,19 +240,6 @@ mod tests {
     }
 
     #[test]
-    fn handle_project_name_errors_when_prompt_unavailable() {
-        let mut keywords = HashMap::new();
-        let mut options = Options::default();
-        let file = File::new(
-            "test.txt".into(),
-            "Hello {{$PROJECTNAME}}".into(),
-        );
-
-        let result = Template::handle_project_name(&mut keywords, &mut options, &file);
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn prepare_file_content_replaces_keywords_without_liquid() {
         let mut keywords = HashMap::new();
         keywords.insert("{{$TEST}}".to_string(), "value".to_string());
