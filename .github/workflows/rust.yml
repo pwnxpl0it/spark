@@ -8,15 +8,35 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  JQ_LIB_DIR: "/usr/lib/x86_64-linux-gnu"
 
 jobs:
-  build:
-
+  test:
+    name: Build and test
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            clang \
+            libjq-dev \
+            libonig-dev
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/oniguruma.pc /usr/lib/x86_64-linux-gnu/pkgconfig/libonig.pc || true
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Run unit tests
+        run: cargo test --verbose
