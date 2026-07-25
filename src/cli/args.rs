@@ -3,7 +3,7 @@ use clap::{App, Arg, Command};
 pub struct Cli;
 
 impl Cli {
-    pub fn parse() -> clap::ArgMatches {
+    pub fn app() -> App<'static> {
         App::new("spark")
             .about("A fast and flexible project initializer using TOML-based templates.")
             .version("2.0")
@@ -57,6 +57,74 @@ impl Cli {
                 .requires("template")
             )
             .subcommand(Command::new("init").about("Creates a template for the current directory"))
-            .get_matches()
+    }
+
+    pub fn parse() -> clap::ArgMatches {
+        Self::app().get_matches()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+
+    #[test]
+    fn parses_template_argument() {
+        let matches = Cli::app()
+            .try_get_matches_from(["spark", "browser_extension"])
+            .unwrap();
+        assert_eq!(matches.value_of("template"), Some("browser_extension"));
+    }
+
+    #[test]
+    fn parses_flags_with_template() {
+        let matches = Cli::app()
+            .try_get_matches_from([
+                "spark",
+                "demo",
+                "--git",
+                "--no-liquid",
+                "-q",
+                "--from",
+                "name=spark,author=me",
+                "--json",
+                "data.json",
+                "-c",
+                "/tmp/config.toml",
+            ])
+            .unwrap();
+
+        assert_eq!(matches.value_of("template"), Some("demo"));
+        assert!(matches.is_present("git"));
+        assert!(matches.is_present("no-liquid"));
+        assert!(matches.is_present("quiet"));
+        assert_eq!(matches.value_of("keywords"), Some("name=spark,author=me"));
+        assert_eq!(matches.value_of("json"), Some("data.json"));
+        assert_eq!(matches.value_of("config"), Some("/tmp/config.toml"));
+    }
+
+    #[test]
+    fn default_config_path() {
+        let matches = Cli::app()
+            .try_get_matches_from(["spark", "demo"])
+            .unwrap();
+        assert_eq!(
+            matches.value_of("config"),
+            Some("~/.config/spark/config.toml")
+        );
+    }
+
+    #[test]
+    fn parses_init_subcommand() {
+        let matches = Cli::app()
+            .try_get_matches_from(["spark", "init"])
+            .unwrap();
+        assert!(matches.subcommand_matches("init").is_some());
+    }
+
+    #[test]
+    fn rejects_git_without_template() {
+        let result = Cli::app().try_get_matches_from(["spark", "--git"]);
+        assert!(result.is_err());
     }
 }
