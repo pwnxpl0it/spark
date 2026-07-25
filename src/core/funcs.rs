@@ -78,8 +78,8 @@ impl Fns {
 
                 if !json_data.is_null() && keyword_name.contains('.') {
                     if let Ok(value) = jq_rs::run(&keyword_name, &json_data.to_string()) {
-                        // Remove quotes from the value
-                        keywords.insert(keyword, value.replace('"', ""));
+                        // Remove quotes/newlines from jq output so paths stay valid
+                        keywords.insert(keyword, value.replace('"', "").trim().to_string());
                     }
                     continue;
                 }

@@ -87,6 +87,13 @@ impl Template {
             || trimmed_path.contains("{{$PROJECTNAME}}")
             || trimmed_project_root.contains("{{$PROJECTNAME}}")
         {
+            if let Some(existing) = keywords.get("{{$PROJECTNAME}}") {
+                if !existing.is_empty() {
+                    options.set_project_root(existing);
+                    return Ok(existing.clone());
+                }
+            }
+
             let project_name: String = prompt("Project name")
                 .map_err(|_| format!("{}", "Project name not set.".red().bold()))?;
 
@@ -96,20 +103,6 @@ impl Template {
         } else {
             Ok(String::new())
         }
-    }
-
-    fn process_file(
-        file: &File,
-        keywords: &mut HashMap<String, String>,
-        re: &Regex,
-        json_data: &serde_json::Value,
-        options: &mut Options,
-    ) -> Result<String, String> {
-        Fns::find_and_exec(&file.content, keywords, re, json_data);
-        Fns::find_and_exec(&file.path, keywords, re, json_data);
-        
-        Self::handle_project_name(keywords, options, file)
-            .map_err(|e| format!("Error handling project name: {}", e))
     }
 
     fn prepare_file_content(
@@ -145,8 +138,13 @@ impl Template {
         let mut project = String::new();
 
         for file in files {
+            // Resolve functions/JSON in content and path before any keyword replacement.
+            Fns::find_and_exec(&file.content, keywords, &re, &json_data);
+            Fns::find_and_exec(&file.path, keywords, &re, &json_data);
+
             if project.is_empty() {
-                project = Self::process_file(&file, keywords, &re, &json_data, &mut options)?;
+                project = Self::handle_project_name(keywords, &mut options, &file)
+                    .map_err(|e| format!("Error handling project name: {}", e))?;
             }
 
             let (path, final_output) =
@@ -352,6 +350,56 @@ mod tests {
 
         let written = fs::read_to_string(&out_file).unwrap();
         assert_eq!(written, "Hello spark");
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn extract_resolves_path_placeholders_before_replacement() {
+        // Regression: after PROJECTNAME was set from the first file, later files used to
+        // skip find_and_exec and replace/write paths before resolving JSON (or :read).
+        let out_dir = std::env::temp_dir().join("spark_test_resolve_before_replace");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let first_path = format!("{}/{{{{$PROJECTNAME}}}}/first.txt", out_dir.display());
+        let second_path = format!(
+            "{}/{{{{$PROJECTNAME}}}}/{{{{$.module}}}}/second.txt",
+            out_dir.display()
+        );
+
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: Some(serde_json::json!({ "module": "core" })),
+                project_root: "{{$PROJECTNAME}}".into(),
+            }),
+            files: Some(vec![
+                File::new(first_path, "first".into()),
+                File::new(second_path, "second {{$.module}}".into()),
+            ]),
+        };
+
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$PROJECTNAME}}".to_string(), "myapp".to_string());
+
+        template.extract(&mut keywords).unwrap();
+
+        let second_file = out_dir.join("myapp").join("core").join("second.txt");
+        assert!(
+            second_file.is_file(),
+            "expected resolved path {:?}, placeholders were replaced too early",
+            second_file
+        );
+        assert_eq!(fs::read_to_string(&second_file).unwrap(), "second core");
+
+        let unresolved = out_dir.join("myapp").join("{{$.module}}").join("second.txt");
+        assert!(
+            !unresolved.exists(),
+            "wrote unresolved path placeholder: {:?}",
+            unresolved
+        );
 
         let _ = fs::remove_dir_all(&out_dir);
     }
