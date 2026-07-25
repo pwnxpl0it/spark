@@ -278,6 +278,61 @@ mod tests {
     }
 
     #[test]
+    fn prepare_file_content_replaces_keywords_before_liquid() {
+        // Correct order: spark placeholders are replaced first, then Liquid runs.
+        // If Liquid ran first, `{{ "{{$ITEM}}" | upcase }}` would become `{{$ITEM}}`
+        // and the final value would stay lowercase after keyword replacement.
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$ITEM}}".to_string(), "hello".to_string());
+        let options = Options {
+            git: false,
+            use_liquid: Some(true),
+            json_data: None,
+            project_root: String::new(),
+        };
+
+        let (_path, content) = Template::prepare_file_content(
+            r#"{{ "{{$ITEM}}" | upcase }}"#,
+            "out.txt",
+            &keywords,
+            &options,
+        )
+        .unwrap();
+
+        assert_eq!(content, "HELLO");
+    }
+
+    #[test]
+    fn extract_resolves_json_then_replaces_then_applies_liquid() {
+        let out_dir = std::env::temp_dir().join("spark_test_json_then_liquid");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let out_file = out_dir.join("out.txt");
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: Some(true),
+                json_data: Some(serde_json::json!({ "name": "spark" })),
+                project_root: String::new(),
+            }),
+            files: Some(vec![File::new(
+                out_file.to_string_lossy().to_string(),
+                // JSON resolve → keyword replace → Liquid filter
+                r#"{% for i in (1..3) %}{{ "{{$.name}}" | upcase }}-{{ i }} {% endfor %}"#.into(),
+            )]),
+        };
+
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        let content = fs::read_to_string(&out_file).unwrap();
+        assert_eq!(content, "SPARK-1 SPARK-2 SPARK-3 ");
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
     fn prepare_file_content_creates_parent_directories() {
         let sub_dir = std::env::temp_dir().join("spark_test_prepare_dirs");
         let file_path = sub_dir.join("nested").join("test.txt");
