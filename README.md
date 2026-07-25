@@ -36,7 +36,9 @@ Spark is a powerful and flexible project initializer designed to simplify your w
 - [JSON Integration](#json-integration)
 - [Liquid Templating Support 🧪](#liquid-templating-support-)
 - [Automated Template Generation 🚀](#automated-template-generation-)
-- [Neovim Plugin](#neovim-plugin-)
+- [Config Keywords ⚙️](#config-keywords-%EF%B8%8F)
+- [Development](#development)
+- [Neovim plugin (spark.nvim)](#-neovim-plugin-sparknvim)
 
 ---
 
@@ -230,8 +232,8 @@ Template options in spark provide a way to customize the project setup by allowi
 |--------------- | --------------- | ---------------  |
 | git   | Initialize Git repository in the project directory   | `git=true` |
 | project_root    | Set the project name to a constant value or ask for user input  | `project_root="new_project"`, `project_root="{{$PROJECTNAME}}"` |
-| use_liquid    | Enable/Disable Liquid templating in the template     | `use_liquid=true` |
-| use_json    | Embed JSON in the template     | `use_json='{"id": 1, "name": "John"}'` |
+| use_liquid    | Enable/Disable Liquid templating in the template (enabled by default)     | `use_liquid=true` |
+| json_data    | Embed JSON in the template for `{{$.…}}` placeholders     | See [JSON Integration](#json-integration) |
 
 
 ## Git Integration 🐙
@@ -348,7 +350,7 @@ content = """
 
 ```sh
 pip install {{$PROJECTNAME}}
-/```
+```
 
 ## Usage
 
@@ -356,7 +358,7 @@ pip install {{$PROJECTNAME}}
 import {{$PROJECTNAME}}
 
 print({{$PROJECTNAME}}.__version__)
-/```
+```
 
 ## License
 This project is licensed under the MIT License.
@@ -470,11 +472,11 @@ console.log("Hello world!")
 
 ## JSON Integration
 
-You can use json to replace placeholders in your template, spark will automatically load values from a json file and replace them automatically
+You can drive placeholders from JSON — either a file via `--json`, or data embedded in the template under `[options.json_data]`.
 
-Spark uses JSON Query language to load values from json nodes.
+Spark uses [jq](https://jqlang.github.io/jq/)-style paths. Placeholders look like `{{$.user.name}}` and work in both **file paths** and **content**.
 
-Here is an example:
+### From a JSON file
 
 ```json
 {
@@ -483,16 +485,17 @@ Here is an example:
 		"name": "John Doe",
 		"email": "john.doe@example.com"
 	},
+	"project": {
+		"slug": "demo_app"
+	},
 	"status": ["200 OK"]
 }
 ```
 
-Example template:
-
 ```toml
 [[files]]
-path="test"
-content="""
+path = "{{$.project.slug}}/README.md"
+content = """
 User ID: {{$.user.id}}
 User Name: {{$.user.name}}
 User Email: {{$.user.email}}
@@ -504,24 +507,48 @@ Response Status: {{$.status[0]}}
 $ spark template --json test.json
 ```
 
-Output:
+### Embedded in the template
 
-```console
-$ cat test
+```toml
+[options]
+git = false
+use_liquid = false
 
-User ID: 12345
-User Name: John Doe
-User Email: john.doe@example.com
-Response Status: 200 OK
+[options.json_data]
+status = ["200 OK"]
+
+[options.json_data.user]
+id = "12345"
+name = "John Doe"
+email = "john.doe@example.com"
+
+[options.json_data.project]
+slug = "demo_app"
+
+[[files]]
+path = "{{$.project.slug}}/profile.txt"
+content = """
+Hello {{$.user.name}}
+"""
 ```
 
 > [!NOTE]
-> Although this is a cool feature to automate user inputs, It comes with performance costs
+> JSON lookup uses `jq-rs` and has some performance cost.
 > [Why?](https://github.com/onelson/jq-rs?tab=readme-ov-file#a-note-on-performance)
 
 ## Liquid Templating Support 🧪
 
-Spark now supports [Liquid](https://shopify.github.io/liquid/) templating alongside its own custom syntax. This allows you to benefit from Liquid's logic (loops, conditionals) while continuing to use `spark`'s powerful keyword replacement.
+Spark supports [Liquid](https://shopify.github.io/liquid/) alongside its own placeholders (loops, filters, conditionals, etc.).
+
+### Processing order
+
+For each file, Spark always runs in this order:
+
+1. **Resolve** functions (`:read`) and JSON paths (`{{$.…}}`) in path and content  
+2. **Replace** `{{$…}}` keywords  
+3. **Render** Liquid (when enabled)
+
+So keyword/JSON values are available to Liquid filters and tags.
 
 #### **Example:**
 ```toml
@@ -534,8 +561,8 @@ Example! {{ i }} {{ "{{$file:read}}" | append: ".html" }}
 """
 ```
 
-- *Spark* replaces `{{$file:read}}` with user input.
-- Liquid handles loops and string manipulation.
+- Spark resolves/replaces `{{$file:read}}` first.
+- Liquid then handles the loop and filters.
 
 #### **Result:**
 ```
@@ -546,14 +573,11 @@ Example! 4 ff.html
 Example! 5 ff.html
 ```
 
-With this integration, you can create dynamic and flexible templates that combine the strengths of both `spark` and Liquid.
-
 > [!TIP]
-> Liquid is enabled by default in templates. To disable it, set `use_liquid=false` in the template options.
-> or use `--no-liquid` flag when running `spark`
+> Liquid is enabled by default. Disable with `use_liquid=false` in `[options]`, or `--no-liquid` on the CLI.
 
 > [!IMPORTANT]
-> When using Spark keywords inside Liquid templates, wrap them in double curly braces like this:
+> When using Spark keywords inside Liquid, wrap them so Liquid sees a string until after replacement:
 >   ```liquid
 >     {{ "{{$PLACEHOLDER}}" | capitalize }}
 >   ```
@@ -606,7 +630,7 @@ return M
 
 ## Config Keywords ⚙️
 You can have your own Keywords for spark to replace with desired values!
-Spark finds them stored in $HOME/.config/spark/config.toml Or the config path you specified using -c/--config option 🦀
+Spark finds them stored in `$HOME/.config/spark/config.toml` or the config path you specified using `-c`/`--config`.
 
 ```toml
 [Keywords]
@@ -615,6 +639,16 @@ USERNAME = "@pwnxpl0it"
 GITHUB = "https://github.com/pwnxpl0it"
 #etc .....
 ```
+
+## Development
+
+```sh
+cargo build
+cargo test
+cargo run -- [TEMPLATE] [OPTIONS]
+```
+
+Unit tests cover keywords, functions, utils, templates (including JSON paths and Liquid ordering), options, config, and CLI args.
 
 ## 👾 Neovim plugin (spark.nvim) 
 I wrote a neovim plugin that makes it a way easier, Check it out [spark.nvim](https://www.github.com/pwnxpl0it/spark.nvim).
