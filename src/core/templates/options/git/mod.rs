@@ -42,3 +42,14 @@ pub fn init(project_root: &str) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::check_git;
+
+    #[test]
+    fn check_git_succeeds_when_git_is_available() {
+        // This environment has git installed; the call should succeed.
+        assert!(check_git().is_ok());
+    }
+}
