@@ -175,3 +175,197 @@ impl Template {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::fs;
+
+    #[test]
+    fn liquify_errors_on_unknown_variable() {
+        let result = Template::liquify("Hello {{ name }}!");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn liquify_renders_literal_text() {
+        let output = Template::liquify("Hello spark!").unwrap();
+        assert_eq!(output, "Hello spark!");
+    }
+
+    #[test]
+    fn liquify_applies_stdlib_filters() {
+        let output = Template::liquify("{{ 'hello' | upcase }}").unwrap();
+        assert_eq!(output, "HELLO");
+    }
+
+    #[test]
+    fn set_info_files_and_options() {
+        let mut template = Template {
+            info: None,
+            options: None,
+            files: None,
+        };
+
+        template.set_info(Information {
+            name: Some("demo".into()),
+            author: Some("author".into()),
+            description: Some("desc".into()),
+        });
+        template.set_files(vec![File::new("a.txt".into(), "hi".into())]);
+        template.set_options(Options {
+            git: true,
+            use_liquid: Some(false),
+            json_data: None,
+            project_root: "proj".into(),
+        });
+
+        assert_eq!(template.info.as_ref().unwrap().name.as_deref(), Some("demo"));
+        assert_eq!(template.files.as_ref().unwrap().len(), 1);
+        let options = template.dump_options().unwrap();
+        assert!(options.git);
+        assert_eq!(options.project_root, "proj");
+    }
+
+    #[test]
+    fn handle_project_name_without_placeholder_is_noop() {
+        let mut keywords = HashMap::new();
+        let mut options = Options::default();
+        let file = File::new("test.txt".into(), "hello world".into());
+
+        let result = Template::handle_project_name(&mut keywords, &mut options, &file).unwrap();
+        assert!(result.is_empty());
+        assert!(!keywords.contains_key("{{$PROJECTNAME}}"));
+    }
+
+    #[test]
+    fn handle_project_name_errors_when_prompt_unavailable() {
+        let mut keywords = HashMap::new();
+        let mut options = Options::default();
+        let file = File::new(
+            "test.txt".into(),
+            "Hello {{$PROJECTNAME}}".into(),
+        );
+
+        let result = Template::handle_project_name(&mut keywords, &mut options, &file);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn prepare_file_content_replaces_keywords_without_liquid() {
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$TEST}}".to_string(), "value".to_string());
+        let options = Options {
+            git: false,
+            use_liquid: None,
+            json_data: None,
+            project_root: String::new(),
+        };
+
+        let (path, content) =
+            Template::prepare_file_content("Hello {{$TEST}}", "out.txt", &keywords, &options)
+                .unwrap();
+
+        assert_eq!(path, "out.txt");
+        assert_eq!(content, "Hello value");
+    }
+
+    #[test]
+    fn prepare_file_content_applies_liquid_when_enabled() {
+        let keywords = HashMap::new();
+        let options = Options {
+            git: false,
+            use_liquid: Some(true),
+            json_data: None,
+            project_root: String::new(),
+        };
+
+        let (_path, content) = Template::prepare_file_content(
+            "{{ 'spark' | upcase }}",
+            "out.txt",
+            &keywords,
+            &options,
+        )
+        .unwrap();
+
+        assert_eq!(content, "SPARK");
+    }
+
+    #[test]
+    fn prepare_file_content_creates_parent_directories() {
+        let sub_dir = std::env::temp_dir().join("spark_test_prepare_dirs");
+        let file_path = sub_dir.join("nested").join("test.txt");
+        let _ = fs::remove_dir_all(&sub_dir);
+
+        let keywords = HashMap::new();
+        let options = Options {
+            git: false,
+            use_liquid: None,
+            json_data: None,
+            project_root: String::new(),
+        };
+
+        let (path, content) = Template::prepare_file_content(
+            "hi",
+            &file_path.to_string_lossy(),
+            &keywords,
+            &options,
+        )
+        .unwrap();
+
+        assert_eq!(path, file_path.to_string_lossy());
+        assert_eq!(content, "hi");
+        assert!(file_path.parent().unwrap().is_dir());
+
+        let _ = fs::remove_dir_all(&sub_dir);
+    }
+
+    #[test]
+    fn extract_with_no_files_succeeds() {
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![]),
+        };
+        let mut keywords = HashMap::new();
+        assert!(template.extract(&mut keywords).is_ok());
+    }
+
+    #[test]
+    fn extract_writes_files_with_keyword_replacement() {
+        let out_dir = std::env::temp_dir().join("spark_test_extract");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+        let out_file = out_dir.join("hello.txt");
+
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![File::new(
+                out_file.to_string_lossy().to_string(),
+                "Hello {{$NAME}}".into(),
+            )]),
+        };
+
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$NAME}}".to_string(), "spark".to_string());
+
+        template.extract(&mut keywords).unwrap();
+
+        let written = fs::read_to_string(&out_file).unwrap();
+        assert_eq!(written, "Hello spark");
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+}
