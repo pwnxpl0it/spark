@@ -25,8 +25,6 @@ impl Fns {
         keywords: &HashMap<String, String>,
         re: &Regex,
     ) -> Option<IndexMap<String, (String, Self)>> {
-        //HACK: remove me
-        println!("I got called for {}", txt);
         let mut found = IndexMap::new();
         for cap in re.captures_iter(txt) {
             if let Some(key_match) = cap.get(0) {
