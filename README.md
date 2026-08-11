@@ -576,6 +576,8 @@ Example! 5 ff.html
 > [!TIP]
 > Liquid is enabled by default. Disable with `use_liquid=false` in `[options]`, or `--no-liquid` on the CLI.
 
+---
+
 > [!IMPORTANT]
 > When using Spark keywords inside Liquid, wrap them so Liquid sees a string until after replacement:
 >   ```liquid

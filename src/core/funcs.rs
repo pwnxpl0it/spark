@@ -79,9 +79,25 @@ impl Fns {
                 }
 
                 if !json_data.is_null() && keyword_name.contains('.') {
-                    if let Ok(value) = jq_rs::run(&keyword_name, &json_data.to_string()) {
-                        // Remove quotes/newlines from jq output so paths stay valid
-                        keywords.insert(keyword, value.replace('"', "").trim().to_string());
+                    match jq_rs::run(&keyword_name, &json_data.to_string()) {
+                        Ok(raw) => {
+                            // jq outputs JSON; parse as a string value to preserve
+                            // embedded quotes, falling back to trimmed raw output for
+                            // non-string types (numbers, booleans, arrays).
+                            let resolved = serde_json::from_str::<String>(raw.trim())
+                                .unwrap_or_else(|_| raw.trim().to_string());
+                            keywords.insert(keyword, resolved);
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "\n[{}] {}: {} ({})",
+                                "WRN".yellow(),
+                                "jq lookup failed".yellow(),
+                                keyword_name.green(),
+                                e
+                            );
+                            keywords.insert(keyword, String::new());
+                        }
                     }
                     continue;
                 }
