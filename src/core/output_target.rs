@@ -8,6 +8,7 @@
 //! | `stdout://`     | Write rendered content to **stdout**   |
 //! | `stderr://`     | Write rendered content to **stderr**   |
 //! | `file://some/path` | Write to the filesystem path after `file://` |
+//! | `clipboard://`  | Copy rendered content to the system clipboard |
 //! | anything else   | Write to the filesystem (unchanged behaviour) |
 //!
 //! ## Windows path safety
@@ -37,6 +38,8 @@ pub enum OutputTarget {
     Stdout,
     /// Write to standard error.
     Stderr,
+    /// Write to system clipboard.
+    Clipboard,
 }
 
 impl OutputTarget {
@@ -45,6 +48,7 @@ impl OutputTarget {
     /// Recognised schemes:
     /// - `stdout://` → [`OutputTarget::Stdout`]
     /// - `stderr://` → [`OutputTarget::Stderr`]
+    /// - `clipboard://` → [`OutputTarget::Clipboard`]
     /// - `file://<path>` → [`OutputTarget::File`] for `<path>`
     ///
     /// Everything else (including Windows drive-letter paths such as `C:\foo`)
@@ -59,6 +63,7 @@ impl OutputTarget {
                 match scheme {
                     "stdout" if path == "stdout://" => return Self::Stdout,
                     "stderr" if path == "stderr://" => return Self::Stderr,
+                    "clipboard" if path == "clipboard://" => return Self::Clipboard,
                     "file" => {
                         // Strip "file://" prefix; the rest is the filesystem path.
                         let rest = path
@@ -94,6 +99,15 @@ impl OutputTarget {
                 let mut handle = stderr.lock();
                 handle.write_all(content.as_bytes())?;
                 handle.flush()
+            }
+            Self::Clipboard => {
+                let mut clipboard = arboard::Clipboard::new()
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                clipboard
+                    .set_text(content)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                println!("{}", "copied to clipboard".blue());
+                Ok(())
             }
             Self::File(path) => {
                 let path_str = path.to_string_lossy();
@@ -324,5 +338,43 @@ mod tests {
         assert_eq!(content, "via file://");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── clipboard:// ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn clipboard_scheme_yields_clipboard_target() {
+        assert_eq!(
+            OutputTarget::from_path("clipboard://"),
+            OutputTarget::Clipboard
+        );
+    }
+
+    /// `clipboard:note.txt` is NOT the exact sentinel — must fall back to File.
+    #[test]
+    fn clipboard_with_suffix_is_file_not_clipboard() {
+        assert_eq!(
+            OutputTarget::from_path("clipboard:note.txt"),
+            OutputTarget::File(PathBuf::from("clipboard:note.txt"))
+        );
+    }
+
+    /// `clipboard://note.txt` has a path component — must fall back to File.
+    #[test]
+    fn clipboard_with_uri_path_is_file_not_clipboard() {
+        assert_eq!(
+            OutputTarget::from_path("clipboard://note.txt"),
+            OutputTarget::File(PathBuf::from("clipboard://note.txt"))
+        );
+    }
+
+    /// Clipboard write either succeeds (display available) or returns a
+    /// meaningful Err — it must never panic.
+    #[test]
+    fn clipboard_write_does_not_panic() {
+        let result = OutputTarget::Clipboard.write("hello clipboard");
+        // In CI / headless environments the clipboard may be unavailable.
+        // We just verify the call returns rather than panics.
+        let _ = result;
     }
 }
