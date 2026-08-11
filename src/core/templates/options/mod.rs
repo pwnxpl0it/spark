@@ -46,3 +46,53 @@ impl Options {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_options() {
+        let options = Options::default();
+        assert!(!options.git);
+        assert_eq!(options.use_liquid, Some(true));
+        assert_eq!(options.json_data, Some(serde_json::Value::Null));
+        assert!(options.project_root.is_empty());
+    }
+
+    #[test]
+    fn setters_update_fields() {
+        let mut options = Options::default();
+        options.set_git(true);
+        options.set_project_root("my_project");
+        options.set_json(serde_json::json!({ "k": "v" }));
+
+        assert!(options.git);
+        assert_eq!(options.project_root, "my_project");
+        assert_eq!(options.json_data, Some(serde_json::json!({ "k": "v" })));
+    }
+
+    #[test]
+    fn handle_is_noop_when_git_disabled() {
+        let options = Options {
+            git: false,
+            use_liquid: None,
+            json_data: None,
+            project_root: String::new(),
+        };
+        // Should return without attempting git init.
+        options.handle();
+    }
+
+    #[test]
+    fn handle_skips_git_init_when_project_root_missing() {
+        let options = Options {
+            git: true,
+            use_liquid: None,
+            json_data: None,
+            project_root: String::new(),
+        };
+        // Should print an error and return without panicking.
+        options.handle();
+    }
+}

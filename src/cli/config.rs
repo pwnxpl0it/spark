@@ -90,3 +90,91 @@ content = '''
         keywords
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+    use std::fs;
+
+    #[test]
+    fn new_expands_tilde_and_derives_templates_path() {
+        let cfg = Config::new("~/.config/spark/config.toml");
+        let expected_path = shellexpand::tilde("~/.config/spark/config.toml").to_string();
+        let expected_templates = shellexpand::tilde("~/.config/spark/templates").to_string();
+
+        assert_eq!(cfg.path, expected_path);
+        assert_eq!(cfg.templates_path, expected_templates);
+    }
+
+    #[test]
+    fn new_with_absolute_path() {
+        let cfg = Config::new("/tmp/spark_cfg/config.toml");
+        assert_eq!(cfg.path, "/tmp/spark_cfg/config.toml");
+        assert_eq!(cfg.templates_path, "/tmp/spark_cfg/templates");
+    }
+
+    #[test]
+    fn get_keywords_reads_keywords_section() {
+        let dir = std::env::temp_dir().join("spark_test_config_keywords");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let config_path = dir.join("config.toml");
+        fs::write(
+            &config_path,
+            r#"
+[Keywords]
+AUTHOR = "pwnxpl0it"
+GITHUB = "https://github.com/pwnxpl0it"
+"#,
+        )
+        .unwrap();
+
+        let cfg = Config::new(&config_path.to_string_lossy());
+        let keywords = cfg.get_keywords();
+
+        assert_eq!(
+            keywords.get("{$AUTHOR}").map(String::as_str),
+            Some("pwnxpl0it")
+        );
+        assert_eq!(
+            keywords.get("{$GITHUB}").map(String::as_str),
+            Some("https://github.com/pwnxpl0it")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn get_keywords_returns_empty_when_section_missing() {
+        let dir = std::env::temp_dir().join("spark_test_config_empty");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let config_path = dir.join("config.toml");
+        fs::write(&config_path, "").unwrap();
+
+        let cfg = Config::new(&config_path.to_string_lossy());
+        let keywords = cfg.get_keywords();
+        assert!(keywords.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn init_creates_config_file() {
+        let dir = std::env::temp_dir().join("spark_test_config_init");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let config_path = dir.join("config.toml");
+        let cfg = Config::new(&config_path.to_string_lossy());
+        cfg.init();
+
+        assert!(config_path.exists());
+        let content = fs::read_to_string(&config_path).unwrap();
+        assert!(content.contains("[Keywords]"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

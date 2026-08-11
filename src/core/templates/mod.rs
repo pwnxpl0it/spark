@@ -87,6 +87,13 @@ impl Template {
             || trimmed_path.contains("{{$PROJECTNAME}}")
             || trimmed_project_root.contains("{{$PROJECTNAME}}")
         {
+            if let Some(existing) = keywords.get("{{$PROJECTNAME}}") {
+                if !existing.is_empty() {
+                    options.set_project_root(existing);
+                    return Ok(existing.clone());
+                }
+            }
+
             let project_name: String = prompt("Project name")
                 .map_err(|_| format!("{}", "Project name not set.".red().bold()))?;
 
@@ -96,20 +103,6 @@ impl Template {
         } else {
             Ok(String::new())
         }
-    }
-
-    fn process_file(
-        file: &File,
-        keywords: &mut HashMap<String, String>,
-        re: &Regex,
-        json_data: &serde_json::Value,
-        options: &mut Options,
-    ) -> Result<String, String> {
-        Fns::find_and_exec(&file.content, keywords, re, json_data);
-        Fns::find_and_exec(&file.path, keywords, re, json_data);
-        
-        Self::handle_project_name(keywords, options, file)
-            .map_err(|e| format!("Error handling project name: {}", e))
     }
 
     fn prepare_file_content(
@@ -145,8 +138,13 @@ impl Template {
         let mut project = String::new();
 
         for file in files {
+            // Resolve functions/JSON in content and path before any keyword replacement.
+            Fns::find_and_exec(&file.content, keywords, &re, &json_data);
+            Fns::find_and_exec(&file.path, keywords, &re, &json_data);
+
             if project.is_empty() {
-                project = Self::process_file(&file, keywords, &re, &json_data, &mut options)?;
+                project = Self::handle_project_name(keywords, &mut options, &file)
+                    .map_err(|e| format!("Error handling project name: {}", e))?;
             }
 
             let (path, final_output) =
@@ -173,5 +171,562 @@ impl Template {
             ),
             None => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::fs;
+
+    #[test]
+    fn liquify_errors_on_unknown_variable() {
+        let result = Template::liquify("Hello {{ name }}!");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn liquify_renders_literal_text() {
+        let output = Template::liquify("Hello spark!").unwrap();
+        assert_eq!(output, "Hello spark!");
+    }
+
+    #[test]
+    fn liquify_applies_stdlib_filters() {
+        let output = Template::liquify("{{ 'hello' | upcase }}").unwrap();
+        assert_eq!(output, "HELLO");
+    }
+
+    #[test]
+    fn set_info_files_and_options() {
+        let mut template = Template {
+            info: None,
+            options: None,
+            files: None,
+        };
+
+        template.set_info(Information {
+            name: Some("demo".into()),
+            author: Some("author".into()),
+            description: Some("desc".into()),
+        });
+        template.set_files(vec![File::new("a.txt".into(), "hi".into())]);
+        template.set_options(Options {
+            git: true,
+            use_liquid: Some(false),
+            json_data: None,
+            project_root: "proj".into(),
+        });
+
+        assert_eq!(template.info.as_ref().unwrap().name.as_deref(), Some("demo"));
+        assert_eq!(template.files.as_ref().unwrap().len(), 1);
+        let options = template.dump_options().unwrap();
+        assert!(options.git);
+        assert_eq!(options.project_root, "proj");
+    }
+
+    #[test]
+    fn handle_project_name_without_placeholder_is_noop() {
+        let mut keywords = HashMap::new();
+        let mut options = Options::default();
+        let file = File::new("test.txt".into(), "hello world".into());
+
+        let result = Template::handle_project_name(&mut keywords, &mut options, &file).unwrap();
+        assert!(result.is_empty());
+        assert!(!keywords.contains_key("{{$PROJECTNAME}}"));
+    }
+
+    #[test]
+    fn prepare_file_content_replaces_keywords_without_liquid() {
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$TEST}}".to_string(), "value".to_string());
+        let options = Options {
+            git: false,
+            use_liquid: None,
+            json_data: None,
+            project_root: String::new(),
+        };
+
+        let (path, content) =
+            Template::prepare_file_content("Hello {{$TEST}}", "out.txt", &keywords, &options)
+                .unwrap();
+
+        assert_eq!(path, "out.txt");
+        assert_eq!(content, "Hello value");
+    }
+
+    #[test]
+    fn prepare_file_content_applies_liquid_when_enabled() {
+        let keywords = HashMap::new();
+        let options = Options {
+            git: false,
+            use_liquid: Some(true),
+            json_data: None,
+            project_root: String::new(),
+        };
+
+        let (_path, content) = Template::prepare_file_content(
+            "{{ 'spark' | upcase }}",
+            "out.txt",
+            &keywords,
+            &options,
+        )
+        .unwrap();
+
+        assert_eq!(content, "SPARK");
+    }
+
+    #[test]
+    fn prepare_file_content_replaces_keywords_before_liquid() {
+        // Correct order: spark placeholders are replaced first, then Liquid runs.
+        // If Liquid ran first, `{{ "{{$ITEM}}" | upcase }}` would become `{{$ITEM}}`
+        // and the final value would stay lowercase after keyword replacement.
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$ITEM}}".to_string(), "hello".to_string());
+        let options = Options {
+            git: false,
+            use_liquid: Some(true),
+            json_data: None,
+            project_root: String::new(),
+        };
+
+        let (_path, content) = Template::prepare_file_content(
+            r#"{{ "{{$ITEM}}" | upcase }}"#,
+            "out.txt",
+            &keywords,
+            &options,
+        )
+        .unwrap();
+
+        assert_eq!(content, "HELLO");
+    }
+
+    #[test]
+    fn extract_resolves_json_then_replaces_then_applies_liquid() {
+        let out_dir = std::env::temp_dir().join("spark_test_json_then_liquid");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let out_file = out_dir.join("out.txt");
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: Some(true),
+                json_data: Some(serde_json::json!({ "name": "spark" })),
+                project_root: String::new(),
+            }),
+            files: Some(vec![File::new(
+                out_file.to_string_lossy().to_string(),
+                // JSON resolve → keyword replace → Liquid filter
+                r#"{% for i in (1..3) %}{{ "{{$.name}}" | upcase }}-{{ i }} {% endfor %}"#.into(),
+            )]),
+        };
+
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        let content = fs::read_to_string(&out_file).unwrap();
+        assert_eq!(content, "SPARK-1 SPARK-2 SPARK-3 ");
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn prepare_file_content_creates_parent_directories() {
+        let sub_dir = std::env::temp_dir().join("spark_test_prepare_dirs");
+        let file_path = sub_dir.join("nested").join("test.txt");
+        let _ = fs::remove_dir_all(&sub_dir);
+
+        let keywords = HashMap::new();
+        let options = Options {
+            git: false,
+            use_liquid: None,
+            json_data: None,
+            project_root: String::new(),
+        };
+
+        let (path, content) = Template::prepare_file_content(
+            "hi",
+            &file_path.to_string_lossy(),
+            &keywords,
+            &options,
+        )
+        .unwrap();
+
+        assert_eq!(path, file_path.to_string_lossy());
+        assert_eq!(content, "hi");
+        assert!(file_path.parent().unwrap().is_dir());
+
+        let _ = fs::remove_dir_all(&sub_dir);
+    }
+
+    #[test]
+    fn extract_with_no_files_succeeds() {
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![]),
+        };
+        let mut keywords = HashMap::new();
+        assert!(template.extract(&mut keywords).is_ok());
+    }
+
+    #[test]
+    fn extract_writes_files_with_keyword_replacement() {
+        let out_dir = std::env::temp_dir().join("spark_test_extract");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+        let out_file = out_dir.join("hello.txt");
+
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![File::new(
+                out_file.to_string_lossy().to_string(),
+                "Hello {{$NAME}}".into(),
+            )]),
+        };
+
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$NAME}}".to_string(), "spark".to_string());
+
+        template.extract(&mut keywords).unwrap();
+
+        let written = fs::read_to_string(&out_file).unwrap();
+        assert_eq!(written, "Hello spark");
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn extract_resolves_path_placeholders_before_replacement() {
+        // Regression: after PROJECTNAME was set from the first file, later files used to
+        // skip find_and_exec and replace/write paths before resolving JSON (or :read).
+        let out_dir = std::env::temp_dir().join("spark_test_resolve_before_replace");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let first_path = format!("{}/{{{{$PROJECTNAME}}}}/first.txt", out_dir.display());
+        let second_path = format!(
+            "{}/{{{{$PROJECTNAME}}}}/{{{{$.module}}}}/second.txt",
+            out_dir.display()
+        );
+
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: Some(serde_json::json!({ "module": "core" })),
+                project_root: "{{$PROJECTNAME}}".into(),
+            }),
+            files: Some(vec![
+                File::new(first_path, "first".into()),
+                File::new(second_path, "second {{$.module}}".into()),
+            ]),
+        };
+
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$PROJECTNAME}}".to_string(), "myapp".to_string());
+
+        template.extract(&mut keywords).unwrap();
+
+        let second_file = out_dir.join("myapp").join("core").join("second.txt");
+        assert!(
+            second_file.is_file(),
+            "expected resolved path {:?}, placeholders were replaced too early",
+            second_file
+        );
+        assert_eq!(fs::read_to_string(&second_file).unwrap(), "second core");
+
+        let unresolved = out_dir.join("myapp").join("{{$.module}}").join("second.txt");
+        assert!(
+            !unresolved.exists(),
+            "wrote unresolved path placeholder: {:?}",
+            unresolved
+        );
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    /// Realistic embedded TOML template used by JSON integration tests.
+    fn embedded_json_template_toml(out_dir: &str) -> String {
+        format!(
+            r#"
+[info]
+name = "json_demo"
+author = "spark-tests"
+description = "Embedded template for JSON integration tests"
+
+[options]
+git = false
+use_liquid = false
+project_root = "json_demo"
+
+[[files]]
+path = "{out}/{{{{$.project.slug}}}}/README.md"
+content = """
+# {{{{$.user.name}}}}'s Project
+
+User ID: {{{{$.user.id}}}}
+Email: {{{{$.user.email}}}}
+Status: {{{{$.status[0]}}}}
+"""
+
+[[files]]
+path = "{out}/{{{{$.project.slug}}}}/src/{{{{$.user.id}}}}.txt"
+content = """
+package {{{{$.project.slug}}}}
+owner = {{{{$.user.name}}}}
+"""
+"#,
+            out = out_dir
+        )
+    }
+
+    fn embedded_json_data() -> serde_json::Value {
+        serde_json::json!({
+            "user": {
+                "id": "12345",
+                "name": "John Doe",
+                "email": "john.doe@example.com"
+            },
+            "project": {
+                "slug": "demo_app"
+            },
+            "status": ["200 OK"]
+        })
+    }
+
+    #[test]
+    fn extract_from_embedded_template_with_json_data() {
+        let out_dir = std::env::temp_dir().join("spark_test_embedded_json_template");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let toml_str = embedded_json_template_toml(&out_dir.to_string_lossy());
+        let mut template: Template =
+            toml::from_str(&toml_str).expect("embedded template should parse");
+
+        let mut options = template.dump_options().unwrap_or_default();
+        options.set_json(embedded_json_data());
+        options.use_liquid = Some(false);
+        template.set_options(options);
+
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        let readme = out_dir.join("demo_app").join("README.md");
+        let profile = out_dir.join("demo_app").join("src").join("12345.txt");
+
+        assert!(readme.is_file(), "missing README at {:?}", readme);
+        assert!(profile.is_file(), "missing profile at {:?}", profile);
+
+        let readme_content = fs::read_to_string(&readme).unwrap();
+        assert!(readme_content.contains("# John Doe's Project"));
+        assert!(readme_content.contains("User ID: 12345"));
+        assert!(readme_content.contains("Email: john.doe@example.com"));
+        assert!(readme_content.contains("Status: 200 OK"));
+
+        let profile_content = fs::read_to_string(&profile).unwrap();
+        assert!(profile_content.contains("package demo_app"));
+        assert!(profile_content.contains("owner = John Doe"));
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn extract_reads_json_from_file_like_cli() {
+        let out_dir = std::env::temp_dir().join("spark_test_json_file");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let json_path = out_dir.join("data.json");
+        fs::write(
+            &json_path,
+            r#"{
+                "user": { "id": "99", "name": "Ada", "email": "ada@example.com" },
+                "project": { "slug": "from_file" },
+                "status": ["201 Created"]
+            }"#,
+        )
+        .unwrap();
+
+        let json_data: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&json_path).unwrap()).unwrap();
+
+        let toml_str = embedded_json_template_toml(&out_dir.to_string_lossy());
+        let mut template: Template = toml::from_str(&toml_str).unwrap();
+
+        let mut options = template.dump_options().unwrap_or_default();
+        options.set_json(json_data);
+        options.use_liquid = Some(false);
+        template.set_options(options);
+
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        let readme = out_dir.join("from_file").join("README.md");
+        let content = fs::read_to_string(&readme).expect("README should be written");
+        assert!(content.contains("# Ada's Project"));
+        assert!(content.contains("User ID: 99"));
+        assert!(content.contains("Status: 201 Created"));
+
+        let src_file = out_dir.join("from_file").join("src").join("99.txt");
+        assert!(src_file.is_file());
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn template_parses_embedded_json_data_option_from_toml() {
+        let toml_str = r#"
+[info]
+name = "with_json"
+
+[options]
+git = false
+use_liquid = false
+project_root = "proj"
+
+[options.json_data]
+status = ["ok"]
+
+[options.json_data.user]
+id = "1"
+name = "Neo"
+
+[[files]]
+path = "ignored.txt"
+content = "x"
+"#;
+        let template: Template = toml::from_str(toml_str).expect("toml with json_data should parse");
+        let options = template.options.expect("options present");
+        let json = options.json_data.expect("json_data present");
+        assert_eq!(json["user"]["name"], "Neo");
+        assert_eq!(json["status"][0], "ok");
+    }
+
+    /// Scenario 5 — `--from="PROJECTNAME=myapp"` skips the interactive prompt.
+    ///
+    /// `main()` pre-inserts the value into `keywords` before calling `extract()`.
+    /// When `{{$PROJECTNAME}}` is already set and non-empty, `handle_project_name`
+    /// must use it directly and must NOT call `prompt()`.
+    ///
+    /// We verify this by passing a pre-set keywords map and asserting that:
+    /// 1. `extract()` succeeds without blocking on stdin.
+    /// 2. Files are resolved to the pre-set project-name path (`myapp/...`).
+    /// 3. No unresolved `{{$PROJECTNAME}}` literal appears in any written path.
+    #[test]
+    fn extract_with_from_flag_skips_projectname_prompt() {
+        let out_dir = std::env::temp_dir().join("spark_test_from_flag_projectname");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let file_path = format!(
+            "{}/{{{{$PROJECTNAME}}}}/README.md",
+            out_dir.display()
+        );
+
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: "{{$PROJECTNAME}}".into(),
+            }),
+            files: Some(vec![File::new(
+                file_path,
+                "# {{$PROJECTNAME}}".into(),
+            )]),
+        };
+
+        // Pre-populate PROJECTNAME exactly as main() does when --from is given.
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$PROJECTNAME}}".to_string(), "myapp".to_string());
+
+        // Must not block waiting for stdin — PROJECTNAME is already set.
+        template.extract(&mut keywords).unwrap();
+
+        let readme = out_dir.join("myapp").join("README.md");
+        assert!(
+            readme.is_file(),
+            "--from should resolve {{{{$PROJECTNAME}}}} to 'myapp', expected {:?}",
+            readme
+        );
+        let content = fs::read_to_string(&readme).unwrap();
+        assert_eq!(
+            content, "# myapp",
+            "content should have PROJECTNAME replaced with 'myapp'"
+        );
+
+        // No unresolved placeholder written to disk.
+        let unresolved = out_dir.join("{{$PROJECTNAME}}").join("README.md");
+        assert!(
+            !unresolved.exists(),
+            "unresolved placeholder path must not exist: {:?}",
+            unresolved
+        );
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn extract_uses_json_data_embedded_in_template_options() {
+        let out_dir = std::env::temp_dir().join("spark_test_toml_embedded_json");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let toml_str = format!(
+            r#"
+[info]
+name = "toml_json"
+
+[options]
+git = false
+use_liquid = false
+project_root = "proj"
+
+[options.json_data]
+status = ["embedded"]
+
+[options.json_data.user]
+id = "7"
+name = "Trinity"
+email = "trinity@matrix"
+
+[options.json_data.project]
+slug = "matrix"
+
+[[files]]
+path = "{out}/{{{{$.project.slug}}}}/hello.txt"
+content = """
+Hello {{{{$.user.name}}}} ({{{{$.user.id}}}})
+Status: {{{{$.status[0]}}}}
+"""
+"#,
+            out = out_dir.display()
+        );
+
+        let mut template: Template = toml::from_str(&toml_str).unwrap();
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        let hello = out_dir.join("matrix").join("hello.txt");
+        let content = fs::read_to_string(&hello).unwrap();
+        assert_eq!(
+            content,
+            "Hello Trinity (7)\nStatus: embedded\n"
+        );
+
+        let _ = fs::remove_dir_all(&out_dir);
     }
 }
