@@ -248,6 +248,8 @@ By default, `[[files]].path` is a filesystem path. You can prefix the path with 
 | `stdout://`   | Write rendered content to **stdout**           |
 | `stderr://`   | Write rendered content to **stderr**           |
 
+Unrecognized schemes (e.g. `ftp://`) are not treated as protocol targets and fall back to plain filesystem output.
+
 ### Examples
 
 Print a rendered message to stdout instead of creating a file:
