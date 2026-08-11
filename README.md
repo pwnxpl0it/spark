@@ -28,6 +28,7 @@ Spark is a powerful and flexible project initializer designed to simplify your w
 - [Supply/Override Values from CLI (`--from`) 🏗️](#supplyoverride-values-from-cli---from-️)
 - [Environment Variables ⚙️](#environment-variables-%EF%B8%8F)
 - [Template Options](#template-options)
+- [Output Targets 🎯](#output-targets-)
 - [Git Integration 🐙](#git-integration-)
 - [Example Templates](#example-templates)
   - [Neovim Plugin](#neovim-plugin)
@@ -234,6 +235,71 @@ Template options in spark provide a way to customize the project setup by allowi
 | project_root    | Set the project name to a constant value or ask for user input  | `project_root="new_project"`, `project_root="{{$PROJECTNAME}}"` |
 | use_liquid    | Enable/Disable Liquid templating in the template (enabled by default)     | `use_liquid=true` |
 | json_data    | Embed JSON in the template for `{{$.…}}` placeholders     | See [JSON Integration](#json-integration) |
+
+
+## Output Targets 🎯
+
+By default, `[[files]].path` is a filesystem path. You can prefix the path with a protocol scheme to redirect rendered output to a different sink.
+
+| Scheme        | Behaviour                                      |
+|---------------|------------------------------------------------|
+| *(no scheme)* | Write to the filesystem (unchanged behaviour)  |
+| `file://path` | Write to `path` on the filesystem (explicit)   |
+| `stdout://`   | Write rendered content to **stdout**           |
+| `stderr://`   | Write rendered content to **stderr**           |
+
+Unrecognized schemes (e.g. `ftp://`) are not treated as protocol targets and fall back to plain filesystem output.
+
+### Examples
+
+Print a rendered message to stdout instead of creating a file:
+
+```toml
+[[files]]
+path = "stdout://"
+content = "Hello {{$NAME}}!"
+```
+
+Send a warning to stderr:
+
+```toml
+[[files]]
+path = "stderr://"
+content = "warning: {{$MESSAGE}}"
+```
+
+Use `file://` for an explicit filesystem path:
+
+```toml
+[[files]]
+path = "file://src/main.rs"
+content = """
+fn main() {}
+"""
+```
+
+You can mix targets freely in one template:
+
+```toml
+[[files]]
+path = "src/main.rs"          # normal file
+content = "fn main() {}"
+
+[[files]]
+path = "stdout://"            # also print a summary to stdout
+content = "✅ Generated {{$PROJECTNAME}}"
+```
+
+> [!NOTE]
+> Windows drive-letter paths such as `C:\Users\foo` are **never** mis-parsed as
+> protocol URIs — the scheme detector requires more than one character before the
+> colon.
+>
+> [!NOTE]
+> All Spark templating (keyword replacement, JSON paths, Liquid) is applied
+> before the output is dispatched to the target.  `stdout://{{$TARGET}}` is not
+> supported as a dynamic target selector; the protocol prefix must be a literal
+> string after all placeholder replacements.
 
 
 ## Git Integration 🐙
