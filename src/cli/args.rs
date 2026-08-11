@@ -105,9 +105,7 @@ mod tests {
 
     #[test]
     fn default_config_path() {
-        let matches = Cli::app()
-            .try_get_matches_from(["spark", "demo"])
-            .unwrap();
+        let matches = Cli::app().try_get_matches_from(["spark", "demo"]).unwrap();
         assert_eq!(
             matches.value_of("config"),
             Some("~/.config/spark/config.toml")
@@ -116,9 +114,7 @@ mod tests {
 
     #[test]
     fn parses_init_subcommand() {
-        let matches = Cli::app()
-            .try_get_matches_from(["spark", "init"])
-            .unwrap();
+        let matches = Cli::app().try_get_matches_from(["spark", "init"]).unwrap();
         assert!(matches.subcommand_matches("init").is_some());
     }
 
@@ -185,8 +181,17 @@ mod tests {
             keywords.insert(format!("{{{{${}}}}}", k.trim()), v.trim().to_string());
         }
 
-        assert_eq!(keywords.get("{{$PROJECTNAME}}").map(String::as_str), Some("myapp"));
-        assert_eq!(keywords.get("{{$author}}").map(String::as_str), Some("alice"));
-        assert_eq!(keywords.get("{{$version}}").map(String::as_str), Some("1.0"));
+        assert_eq!(
+            keywords.get("{{$PROJECTNAME}}").map(String::as_str),
+            Some("myapp")
+        );
+        assert_eq!(
+            keywords.get("{{$author}}").map(String::as_str),
+            Some("alice")
+        );
+        assert_eq!(
+            keywords.get("{{$version}}").map(String::as_str),
+            Some("1.0")
+        );
     }
 }

@@ -98,10 +98,8 @@ mod tests {
         map.insert("{{$NAME}}".to_string(), "spark".to_string());
         map.insert("{{$AUTHOR}}".to_string(), "pwnxpl0it".to_string());
 
-        let result = Keywords::replace_keywords(
-            &map,
-            "Project {{$NAME}} by {{$AUTHOR}} ({{$NAME}})",
-        );
+        let result =
+            Keywords::replace_keywords(&map, "Project {{$NAME}} by {{$AUTHOR}} ({{$NAME}})");
         assert_eq!(result, "Project spark by pwnxpl0it (spark)");
     }
 

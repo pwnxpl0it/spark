@@ -215,7 +215,10 @@ mod tests {
             project_root: "proj".into(),
         });
 
-        assert_eq!(template.info.as_ref().unwrap().name.as_deref(), Some("demo"));
+        assert_eq!(
+            template.info.as_ref().unwrap().name.as_deref(),
+            Some("demo")
+        );
         assert_eq!(template.files.as_ref().unwrap().len(), 1);
         let options = template.dump_options().unwrap();
         assert!(options.git);
@@ -344,13 +347,9 @@ mod tests {
             project_root: String::new(),
         };
 
-        let (path, content) = Template::prepare_file_content(
-            "hi",
-            &file_path.to_string_lossy(),
-            &keywords,
-            &options,
-        )
-        .unwrap();
+        let (path, content) =
+            Template::prepare_file_content("hi", &file_path.to_string_lossy(), &keywords, &options)
+                .unwrap();
 
         assert_eq!(path, file_path.to_string_lossy());
         assert_eq!(content, "hi");
@@ -451,7 +450,10 @@ mod tests {
         );
         assert_eq!(fs::read_to_string(&second_file).unwrap(), "second core");
 
-        let unresolved = out_dir.join("myapp").join("{{$.module}}").join("second.txt");
+        let unresolved = out_dir
+            .join("myapp")
+            .join("{{$.module}}")
+            .join("second.txt");
         assert!(
             !unresolved.exists(),
             "wrote unresolved path placeholder: {:?}",
@@ -611,7 +613,8 @@ name = "Neo"
 path = "ignored.txt"
 content = "x"
 "#;
-        let template: Template = toml::from_str(toml_str).expect("toml with json_data should parse");
+        let template: Template =
+            toml::from_str(toml_str).expect("toml with json_data should parse");
         let options = template.options.expect("options present");
         let json = options.json_data.expect("json_data present");
         assert_eq!(json["user"]["name"], "Neo");
@@ -633,10 +636,7 @@ content = "x"
         let out_dir = std::env::temp_dir().join("spark_test_from_flag_projectname");
         let _ = fs::remove_dir_all(&out_dir);
 
-        let file_path = format!(
-            "{}/{{{{$PROJECTNAME}}}}/README.md",
-            out_dir.display()
-        );
+        let file_path = format!("{}/{{{{$PROJECTNAME}}}}/README.md", out_dir.display());
 
         let mut template = Template {
             info: None,
@@ -646,10 +646,7 @@ content = "x"
                 json_data: None,
                 project_root: "{{$PROJECTNAME}}".into(),
             }),
-            files: Some(vec![File::new(
-                file_path,
-                "# {{$PROJECTNAME}}".into(),
-            )]),
+            files: Some(vec![File::new(file_path, "# {{$PROJECTNAME}}".into())]),
         };
 
         // Pre-populate PROJECTNAME exactly as main() does when --from is given.
@@ -724,10 +721,7 @@ Status: {{{{$.status[0]}}}}
 
         let hello = out_dir.join("matrix").join("hello.txt");
         let content = fs::read_to_string(&hello).unwrap();
-        assert_eq!(
-            content,
-            "Hello Trinity (7)\nStatus: embedded\n"
-        );
+        assert_eq!(content, "Hello Trinity (7)\nStatus: embedded\n");
 
         let _ = fs::remove_dir_all(&out_dir);
     }
