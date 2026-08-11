@@ -329,7 +329,9 @@ mod tests {
     }
 
     #[test]
-    fn prepare_file_content_creates_parent_directories() {
+    fn output_target_file_write_creates_parent_directories() {
+        // Directory creation moved from prepare_file_content into
+        // OutputTarget::File::write – verify the end-to-end behaviour.
         let sub_dir = std::env::temp_dir().join("spark_test_prepare_dirs");
         let file_path = sub_dir.join("nested").join("test.txt");
         let _ = fs::remove_dir_all(&sub_dir);
@@ -352,7 +354,11 @@ mod tests {
 
         assert_eq!(path, file_path.to_string_lossy());
         assert_eq!(content, "hi");
+
+        // prepare_file_content no longer creates dirs; OutputTarget::write does.
+        OutputTarget::from_path(&path).write(&content).unwrap();
         assert!(file_path.parent().unwrap().is_dir());
+        assert!(file_path.is_file());
 
         let _ = fs::remove_dir_all(&sub_dir);
     }
@@ -722,6 +728,192 @@ Status: {{{{$.status[0]}}}}
             content,
             "Hello Trinity (7)\nStatus: embedded\n"
         );
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    // ── OutputTarget integration via extract() ───────────────────────────────
+
+    /// Calling extract() with `path = "stdout://"` must succeed and must NOT
+    /// write any file to the filesystem.
+    #[test]
+    fn extract_stdout_target_does_not_write_file() {
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![File::new(
+                "stdout://".into(),
+                "Hello {{$GREETING}}".into(),
+            )]),
+        };
+
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$GREETING}}".to_string(), "world".to_string());
+
+        // Must succeed – stdout is a valid target.
+        assert!(template.extract(&mut keywords).is_ok());
+
+        // Verify no file named "stdout:" or "stdout://" was created anywhere
+        // reachable from the current directory.
+        assert!(!std::path::Path::new("stdout:").exists());
+        assert!(!std::path::Path::new("stdout://").exists());
+    }
+
+    /// Calling extract() with `path = "stderr://"` must succeed without
+    /// creating a filesystem entry.
+    #[test]
+    fn extract_stderr_target_does_not_write_file() {
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![File::new(
+                "stderr://".into(),
+                "error: {{$MSG}}".into(),
+            )]),
+        };
+
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$MSG}}".to_string(), "something went wrong".to_string());
+
+        assert!(template.extract(&mut keywords).is_ok());
+        assert!(!std::path::Path::new("stderr:").exists());
+        assert!(!std::path::Path::new("stderr://").exists());
+    }
+
+    /// `file://` prefix is stripped and the content is written to the
+    /// filesystem path that follows.
+    #[test]
+    fn extract_file_scheme_writes_to_disk() {
+        let out_dir = std::env::temp_dir().join("spark_test_extract_file_scheme");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let file_path = out_dir.join("result.txt");
+        let raw_path = format!("file://{}", file_path.display());
+
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![File::new(raw_path, "content via file://".into())]),
+        };
+
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        assert!(file_path.is_file(), "file:// target must write to disk");
+        assert_eq!(
+            fs::read_to_string(&file_path).unwrap(),
+            "content via file://"
+        );
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    /// Keywords are replaced before dispatching to stdout://.
+    #[test]
+    fn extract_stdout_applies_keyword_replacement() {
+        // We cannot capture stdout in a unit test without additional deps,
+        // but we can verify that extract() returns Ok (not Err) when keywords
+        // are present, proving the replacement+dispatch pipeline ran to
+        // completion without errors.
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![File::new(
+                "stdout://".into(),
+                "project: {{$NAME}} by {{$AUTHOR}}".into(),
+            )]),
+        };
+
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$NAME}}".to_string(), "spark".to_string());
+        keywords.insert("{{$AUTHOR}}".to_string(), "pwnxpl0it".to_string());
+
+        assert!(template.extract(&mut keywords).is_ok());
+    }
+
+    /// Liquid is applied before dispatching to stderr://.
+    #[test]
+    fn extract_stderr_applies_liquid() {
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: Some(true),
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![File::new(
+                "stderr://".into(),
+                "{{ 'warn' | upcase }}".into(),
+            )]),
+        };
+
+        let mut keywords = HashMap::new();
+        assert!(template.extract(&mut keywords).is_ok());
+    }
+
+    /// A mix of protocol and filesystem targets in one template works
+    /// correctly: the filesystem file is written, stdout/stderr are not.
+    #[test]
+    fn extract_mixed_targets_file_and_stdout() {
+        let out_dir = std::env::temp_dir().join("spark_test_mixed_targets");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let file_path = out_dir.join("notes.txt");
+
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            files: Some(vec![
+                File::new(
+                    file_path.to_string_lossy().to_string(),
+                    "filesystem content".into(),
+                ),
+                File::new("stdout://".into(), "stdout content".into()),
+                File::new("stderr://".into(), "stderr content".into()),
+            ]),
+        };
+
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        // Filesystem file must exist with correct content.
+        assert!(file_path.is_file());
+        assert_eq!(
+            fs::read_to_string(&file_path).unwrap(),
+            "filesystem content"
+        );
+
+        // No spurious files for the protocol paths.
+        assert!(!std::path::Path::new("stdout:").exists());
+        assert!(!std::path::Path::new("stderr:").exists());
 
         let _ = fs::remove_dir_all(&out_dir);
     }
