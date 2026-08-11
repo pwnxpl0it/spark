@@ -1,7 +1,9 @@
 pub mod funcs;
 pub mod keywords;
+pub mod output_target;
 pub mod templates;
 mod utils;
+pub use output_target::OutputTarget;
 use serde::{Deserialize, Serialize};
 pub use templates::Options;
 
