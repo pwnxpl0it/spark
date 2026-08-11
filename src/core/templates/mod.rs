@@ -616,6 +616,70 @@ content = "x"
         assert_eq!(json["status"][0], "ok");
     }
 
+    /// Scenario 5 — `--from="PROJECTNAME=myapp"` skips the interactive prompt.
+    ///
+    /// `main()` pre-inserts the value into `keywords` before calling `extract()`.
+    /// When `{{$PROJECTNAME}}` is already set and non-empty, `handle_project_name`
+    /// must use it directly and must NOT call `prompt()`.
+    ///
+    /// We verify this by passing a pre-set keywords map and asserting that:
+    /// 1. `extract()` succeeds without blocking on stdin.
+    /// 2. Files are resolved to the pre-set project-name path (`myapp/...`).
+    /// 3. No unresolved `{{$PROJECTNAME}}` literal appears in any written path.
+    #[test]
+    fn extract_with_from_flag_skips_projectname_prompt() {
+        let out_dir = std::env::temp_dir().join("spark_test_from_flag_projectname");
+        let _ = fs::remove_dir_all(&out_dir);
+
+        let file_path = format!(
+            "{}/{{{{$PROJECTNAME}}}}/README.md",
+            out_dir.display()
+        );
+
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: "{{$PROJECTNAME}}".into(),
+            }),
+            files: Some(vec![File::new(
+                file_path,
+                "# {{$PROJECTNAME}}".into(),
+            )]),
+        };
+
+        // Pre-populate PROJECTNAME exactly as main() does when --from is given.
+        let mut keywords = HashMap::new();
+        keywords.insert("{{$PROJECTNAME}}".to_string(), "myapp".to_string());
+
+        // Must not block waiting for stdin — PROJECTNAME is already set.
+        template.extract(&mut keywords).unwrap();
+
+        let readme = out_dir.join("myapp").join("README.md");
+        assert!(
+            readme.is_file(),
+            "--from should resolve {{{{$PROJECTNAME}}}} to 'myapp', expected {:?}",
+            readme
+        );
+        let content = fs::read_to_string(&readme).unwrap();
+        assert_eq!(
+            content, "# myapp",
+            "content should have PROJECTNAME replaced with 'myapp'"
+        );
+
+        // No unresolved placeholder written to disk.
+        let unresolved = out_dir.join("{{$PROJECTNAME}}").join("README.md");
+        assert!(
+            !unresolved.exists(),
+            "unresolved placeholder path must not exist: {:?}",
+            unresolved
+        );
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
     #[test]
     fn extract_uses_json_data_embedded_in_template_options() {
         let out_dir = std::env::temp_dir().join("spark_test_toml_embedded_json");

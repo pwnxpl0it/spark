@@ -648,7 +648,7 @@ cargo test
 cargo run -- [TEMPLATE] [OPTIONS]
 ```
 
-Unit tests cover keywords, functions, utils, templates (including JSON paths and Liquid ordering), options, config, and CLI args.
+Unit tests cover keywords, functions, utils, templates (including JSON paths and Liquid ordering), options, config, CLI args, and the `--from` flag (pre-populating keywords to skip interactive prompts).
 
 ## 👾 Neovim plugin (spark.nvim) 
 I wrote a neovim plugin that makes it a way easier, Check it out [spark.nvim](https://www.github.com/pwnxpl0it/spark.nvim).
