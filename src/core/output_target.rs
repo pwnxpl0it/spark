@@ -57,8 +57,8 @@ impl OutputTarget {
             let scheme = &path[..colon_pos];
             if scheme.len() > 1 {
                 match scheme {
-                    "stdout" => return Self::Stdout,
-                    "stderr" => return Self::Stderr,
+                    "stdout" if path == "stdout://" => return Self::Stdout,
+                    "stderr" if path == "stderr://" => return Self::Stderr,
                     "file" => {
                         // Strip "file://" prefix; the rest is the filesystem path.
                         let rest = path
@@ -84,12 +84,16 @@ impl OutputTarget {
     pub fn write(&self, content: &str) -> std::io::Result<()> {
         match self {
             Self::Stdout => {
-                print!("{}", content);
-                io::stdout().flush()
+                let stdout = io::stdout();
+                let mut handle = stdout.lock();
+                handle.write_all(content.as_bytes())?;
+                handle.flush()
             }
             Self::Stderr => {
-                eprint!("{}", content);
-                io::stderr().flush()
+                let stderr = io::stderr();
+                let mut handle = stderr.lock();
+                handle.write_all(content.as_bytes())?;
+                handle.flush()
             }
             Self::File(path) => {
                 let path_str = path.to_string_lossy();
@@ -136,6 +140,44 @@ mod tests {
     #[test]
     fn stderr_scheme_yields_stderr_target() {
         assert_eq!(OutputTarget::from_path("stderr://"), OutputTarget::Stderr);
+    }
+
+    /// `stdout:report.txt` has a colon but is NOT the exact `stdout://`
+    /// sentinel — it must be treated as a plain filesystem path.
+    #[test]
+    fn stdout_with_suffix_is_file_not_stdout() {
+        assert_eq!(
+            OutputTarget::from_path("stdout:report.txt"),
+            OutputTarget::File(PathBuf::from("stdout:report.txt"))
+        );
+    }
+
+    /// `stdout://report.txt` looks like a URI with a path component —
+    /// it is not the exact `stdout://` sentinel and must fall back to File.
+    #[test]
+    fn stdout_with_uri_path_is_file_not_stdout() {
+        assert_eq!(
+            OutputTarget::from_path("stdout://report.txt"),
+            OutputTarget::File(PathBuf::from("stdout://report.txt"))
+        );
+    }
+
+    /// `stderr:report.txt` must fall back to File.
+    #[test]
+    fn stderr_with_suffix_is_file_not_stderr() {
+        assert_eq!(
+            OutputTarget::from_path("stderr:report.txt"),
+            OutputTarget::File(PathBuf::from("stderr:report.txt"))
+        );
+    }
+
+    /// `stderr://report.txt` must fall back to File.
+    #[test]
+    fn stderr_with_uri_path_is_file_not_stderr() {
+        assert_eq!(
+            OutputTarget::from_path("stderr://report.txt"),
+            OutputTarget::File(PathBuf::from("stderr://report.txt"))
+        );
     }
 
     #[test]

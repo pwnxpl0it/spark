@@ -294,7 +294,7 @@ content = "✅ Generated {{$PROJECTNAME}}"
 > Windows drive-letter paths such as `C:\Users\foo` are **never** mis-parsed as
 > protocol URIs — the scheme detector requires more than one character before the
 > colon.
-
+>
 > [!NOTE]
 > All Spark templating (keyword replacement, JSON paths, Liquid) is applied
 > before the output is dispatched to the target.  `stdout://{{$TARGET}}` is not
