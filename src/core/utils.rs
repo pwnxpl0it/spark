@@ -2,6 +2,7 @@ use colored::*;
 use std::{fs, io, path::Path};
 use walkdir::WalkDir;
 
+#[allow(dead_code)]
 pub fn create_dirs(dir: &str) {
     match shellexpand::full(dir) {
         Ok(expanded) => {

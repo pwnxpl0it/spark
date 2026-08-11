@@ -1,3 +1,4 @@
+use crate::output_target::OutputTarget;
 use crate::utils::*;
 use crate::*;
 use colored::Colorize;
@@ -120,13 +121,6 @@ impl Template {
             output
         };
 
-        if let Some(dir) = Path::new(&path).parent() {
-            let dir_str = dir.to_string_lossy();
-            if !dir_str.is_empty() {
-                create_dirs(&dir_str);
-            }
-        }
-
         Ok((path, final_output))
     }
 
@@ -150,7 +144,9 @@ impl Template {
             let (path, final_output) =
                 Self::prepare_file_content(&file.content, &file.path, keywords, &options)?;
 
-            write_content(&path, &final_output).map_err(|e| format!("File write error: {}", e))?;
+            OutputTarget::from_path(&path)
+                .write(&final_output)
+                .map_err(|e| format!("Output write error: {}", e))?;
         }
 
         options.handle();
