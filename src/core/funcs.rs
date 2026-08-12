@@ -29,9 +29,23 @@ impl Fns {
         for cap in re.captures_iter(txt) {
             if let Some(key_match) = cap.get(0) {
                 let keyword = key_match.as_str().to_string();
+                // need to compare the overall arms not just checking if it's inserted or not
+                // if lhs function is the same as rhs function then no need to override in the IndexMap
                 if !keywords.contains_key(&keyword) {
                     let stripped_keyword = Keywords::strip(&keyword);
                     let parts: Vec<&str> = stripped_keyword.split(':').collect();
+                    if found.contains_key(parts[0]) {
+                        if let Some((_key, val)) = found.get(parts[0]) {
+                            if parts.len() == 2 {
+                                match (val, parts[1]) {
+                                    (&Fns::None, _) => {} // a user may later define the function in the template, but we catched None first so we need to update accordingly
+                                    _ => continue,
+                                }
+                            } else {
+                                continue;
+                            }
+                        }
+                    }
                     if parts.len() == 2 {
                         match parts[1].trim() {
                             "read" => {
