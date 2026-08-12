@@ -133,6 +133,15 @@ impl Template {
 
         for file in files {
             // Resolve functions/JSON in content and path before any keyword replacement.
+            // compiling content and path so we can we don't miss any keyword because a user might
+            // define function in one of them and expects the value to be replaced in both..
+            Fns::find_and_exec(
+                &(file.content.clone() + &file.path),
+                keywords,
+                &re,
+                &json_data,
+            );
+            // then we just call each one individually .. no reprocessing is done because we hold to our keywords hashmap
             Fns::find_and_exec(&file.content, keywords, &re, &json_data);
             Fns::find_and_exec(&file.path, keywords, &re, &json_data);
 
