@@ -29,14 +29,14 @@ impl Fns {
         for cap in re.captures_iter(txt) {
             if let Some(key_match) = cap.get(0) {
                 let keyword = key_match.as_str().to_string();
+                // need to compare the overall arms not just checking if it's inserted or not
+                // if lhs function is the same as rhs function then no need to override in the IndexMap
                 if !keywords.contains_key(&keyword) {
                     let stripped_keyword = Keywords::strip(&keyword);
                     let parts: Vec<&str> = stripped_keyword.split(':').collect();
                     if parts.len() == 2 {
-                        match parts[1].trim() {
-                            "read" => {
-                                found.insert(parts[0].to_string(), (keyword, Self::Read));
-                            }
+                        let parsed_func = match parts[1].trim() {
+                            "read" => Self::Read,
                             _ => {
                                 eprintln!(
                                     "\n{}: '{}' is not a valid function",
@@ -45,8 +45,22 @@ impl Fns {
                                 );
                                 return None;
                             }
+                        };
+
+                        if let Some((_key, val)) = found.get(parts[0]) {
+                            match (val, parsed_func) {
+                                (&Fns::None, _) => {
+                                    found.insert(parts[0].to_string(), (keyword, parsed_func));
+                                }
+                                _ => continue,
+                            }
+                        } else {
+                            found.insert(parts[0].to_string(), (keyword, parsed_func));
                         }
                     } else {
+                        if found.contains_key(parts[0]) {
+                            continue;
+                        }
                         found.insert(stripped_keyword.clone(), (keyword, Self::None));
                     }
                 }
@@ -192,6 +206,15 @@ mod tests {
         let keywords = HashMap::new();
 
         let found = Fns::find("Bad {{$NAME:upper}}", &keywords, &re);
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn find_returns_none_for_read_followed_by_invalid_function() {
+        let re = keyword_re();
+        let keywords = HashMap::new();
+
+        let found = Fns::find("{{$NAME:read}} then {{$NAME:write}}", &keywords, &re);
         assert!(found.is_none());
     }
 

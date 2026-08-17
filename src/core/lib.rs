@@ -29,7 +29,7 @@ pub struct Template {
     pub files: Option<Vec<File>>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Fns {
     Read,
     //Env,
