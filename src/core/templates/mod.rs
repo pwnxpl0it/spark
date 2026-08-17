@@ -11,6 +11,7 @@ pub mod options;
 pub const KEYWORDS_REGEX: &str = r"\{\{\$.*?\}\}";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Options {
     pub git: bool,
     pub use_liquid: Option<bool>,
@@ -625,6 +626,27 @@ content = "x"
         let json = options.json_data.expect("json_data present");
         assert_eq!(json["user"]["name"], "Neo");
         assert_eq!(json["status"][0], "ok");
+    }
+
+    #[test]
+    fn template_parses_options_with_omitted_optional_fields() {
+        let toml_str = r#"
+[options]
+use_liquid = false
+
+[options.json_data.user]
+name = "Trinity"
+
+[[files]]
+path = "out.txt"
+content = "hello"
+"#;
+        let template: Template =
+            toml::from_str(toml_str).expect("should parse without project_root or git");
+        let options = template.options.expect("options present");
+        assert!(!options.git);
+        assert_eq!(options.project_root, "");
+        assert_eq!(options.use_liquid, Some(false));
     }
 
     /// Scenario 5 — `--from="PROJECTNAME=myapp"` skips the interactive prompt.

@@ -9,7 +9,6 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
-  JQ_LIB_DIR: "/usr/lib/x86_64-linux-gnu"
 
 jobs:
   test:
@@ -24,10 +23,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             pkg-config \
-            clang \
-            libjq-dev \
-            libonig-dev
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/oniguruma.pc /usr/lib/x86_64-linux-gnu/pkgconfig/libonig.pc || true
+            libwayland-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
