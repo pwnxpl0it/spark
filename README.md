@@ -247,6 +247,7 @@ By default, `[[files]].path` is a filesystem path. You can prefix the path with 
 | `file://path` | Write to `path` on the filesystem (explicit)   |
 | `stdout://`   | Write rendered content to **stdout**           |
 | `stderr://`   | Write rendered content to **stderr**           |
+| `clipboard://` | Copy rendered content to the system clipboard  |
 
 Unrecognized schemes (e.g. `ftp://`) are not treated as protocol targets and fall back to plain filesystem output.
 
@@ -275,6 +276,19 @@ Use `file://` for an explicit filesystem path:
 path = "file://src/main.rs"
 content = """
 fn main() {}
+"""
+```
+
+Copy rendered content to the system clipboard:
+
+```toml
+[[files]]
+path = "clipboard://"
+content = """
+{
+  "api_key": "{{$API_KEY}}",
+  "endpoint": "{{$ENDPOINT}}"
+}
 """
 ```
 
