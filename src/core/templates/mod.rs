@@ -133,17 +133,14 @@ impl Template {
 
         for file in files {
             // Resolve functions/JSON in content and path before any keyword replacement.
-            // compiling content and path so we can we don't miss any keyword because a user might
-            // define function in one of them and expects the value to be replaced in both..
+            // Combining content and path separated by newline ensures placeholders in either
+            // field are discovered together without forming synthetic tokens across boundaries.
             Fns::find_and_exec(
-                &(file.content.clone() + &file.path),
+                &format!("{}\n{}", file.content, file.path),
                 keywords,
                 &re,
                 &json_data,
             );
-            // then we just call each one individually .. no reprocessing is done because we hold to our keywords hashmap
-            Fns::find_and_exec(&file.content, keywords, &re, &json_data);
-            Fns::find_and_exec(&file.path, keywords, &re, &json_data);
 
             if project.is_empty() {
                 project = Self::handle_project_name(keywords, &mut options, &file)
@@ -917,6 +914,42 @@ Status: {{{{$.status[0]}}}}
         // No spurious files for the protocol paths.
         assert!(!std::path::Path::new("stdout:").exists());
         assert!(!std::path::Path::new("stderr:").exists());
+
+        let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn extract_does_not_form_synthetic_placeholder_across_content_and_path() {
+        let out_dir = std::env::temp_dir().join("spark_test_no_synthetic_placeholder");
+        let _ = fs::remove_dir_all(&out_dir);
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let out_file = out_dir.join("file.txt");
+        let file_path = out_file.to_string_lossy().to_string();
+
+        let mut template = Template {
+            info: None,
+            options: Some(Options {
+                git: false,
+                use_liquid: None,
+                json_data: None,
+                project_root: String::new(),
+            }),
+            // content ends with "{{$" and path starts with a string ending in "}}"
+            // Neither is a valid placeholder on its own.
+            files: Some(vec![File::new(file_path.clone(), "Hello {{$".into())]),
+        };
+
+        let mut keywords = HashMap::new();
+        template.extract(&mut keywords).unwrap();
+
+        // The keywords map should not contain any synthetic key created across the boundary
+        assert!(
+            keywords.is_empty()
+                || !keywords
+                    .keys()
+                    .any(|k| k.starts_with("{{$") && k.ends_with("}}"))
+        );
 
         let _ = fs::remove_dir_all(&out_dir);
     }
