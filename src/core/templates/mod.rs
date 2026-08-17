@@ -19,7 +19,93 @@ pub struct Options {
     pub project_root: String,
 }
 
+/// A rendered file containing its destination path and evaluated content.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RenderedFile {
+    /// Evaluated destination path (or URI target like `stdout://`, `clipboard://`).
+    pub path: String,
+    /// Evaluated content after keyword substitution and Liquid rendering.
+    pub content: String,
+}
+
+impl RenderedFile {
+    /// Creates a new `RenderedFile`.
+    pub fn new(path: String, content: String) -> Self {
+        Self { path, content }
+    }
+
+    /// Creates a new `RenderedFile` from any types converting into `String`.
+    pub fn create(path: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            content: content.into(),
+        }
+    }
+}
+
 impl Template {
+    /// Parses a template from a TOML string.
+    ///
+    /// # Example
+    /// ```rust
+    /// use spark::Template;
+    ///
+    /// let toml = r#"
+    /// [[files]]
+    /// path = "hello.txt"
+    /// content = "Hello {{$NAME}}"
+    /// "#;
+    /// let template = Template::from_str(toml).unwrap();
+    /// ```
+    pub fn from_str(toml_str: &str) -> crate::Result<Self> {
+        let template: Self = toml::from_str(toml_str)?;
+        Ok(template)
+    }
+
+    /// Reads and parses a template from a TOML file path.
+    pub fn from_file(path: impl AsRef<Path>) -> crate::Result<Self> {
+        let path_ref = path.as_ref();
+        let content = fs::read_to_string(path_ref).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                crate::Error::InvalidPath(path_ref.to_path_buf())
+            } else {
+                crate::Error::Io(e)
+            }
+        })?;
+        Self::from_str(&content)
+    }
+
+    /// Creates an empty `Template` builder.
+    pub fn builder() -> Self {
+        Self {
+            info: None,
+            options: None,
+            files: Some(Vec::new()),
+        }
+    }
+
+    /// Adds a file entry to the template.
+    pub fn with_file(mut self, file: File) -> Self {
+        if let Some(ref mut files) = self.files {
+            files.push(file);
+        } else {
+            self.files = Some(vec![file]);
+        }
+        self
+    }
+
+    /// Sets information metadata on the template.
+    pub fn with_info(mut self, info: Information) -> Self {
+        self.info = Some(info);
+        self
+    }
+
+    /// Sets options on the template.
+    pub fn with_options(mut self, options: Options) -> Self {
+        self.options = Some(options);
+        self
+    }
+
     pub fn set_info(&mut self, info: Information) {
         self.info = Some(info);
     }
@@ -36,7 +122,7 @@ impl Template {
         self.options.clone()
     }
 
-    pub fn generate(dest: &str) -> Result<(), String> {
+    pub fn generate(dest: &str) -> std::result::Result<(), String> {
         let files: Vec<File> = list_files(Path::new("./"))
             .unwrap_or_default()
             .into_iter()
@@ -69,18 +155,20 @@ impl Template {
         Ok(())
     }
 
-    pub fn liquify(string: &str) -> Result<String, liquid::Error> {
+    pub fn liquify(string: &str) -> std::result::Result<String, liquid::Error> {
         let parser = liquid::ParserBuilder::with_stdlib().build()?;
         let empty_globals = liquid::Object::new();
 
         parser.parse(string)?.render(&empty_globals)
     }
 
-    fn handle_project_name(
+    /// Resolves project name if `{{$PROJECTNAME}}` is referenced.
+    pub fn resolve_project_name(
         keywords: &mut HashMap<String, String>,
         options: &mut Options,
         file: &File,
-    ) -> Result<String, String> {
+        interactive: bool,
+    ) -> crate::Result<String> {
         let trimmed_content = file.content.trim();
         let trimmed_path = file.path.trim();
         let trimmed_project_root = options.project_root.trim();
@@ -96,8 +184,12 @@ impl Template {
                 }
             }
 
+            if !interactive {
+                return Err(crate::Error::MissingVariable("PROJECTNAME".to_string()));
+            }
+
             let project_name: String = prompt("Project name")
-                .map_err(|_| format!("{}", "Project name not set.".red().bold()))?;
+                .map_err(|e| crate::Error::Prompt(e.to_string()))?;
 
             keywords.insert("{{$PROJECTNAME}}".to_string(), project_name.clone());
             options.set_project_root(&project_name);
@@ -107,12 +199,22 @@ impl Template {
         }
     }
 
+    #[allow(dead_code)]
+    fn handle_project_name(
+        keywords: &mut HashMap<String, String>,
+        options: &mut Options,
+        file: &File,
+    ) -> std::result::Result<String, String> {
+        Self::resolve_project_name(keywords, options, file, true)
+            .map_err(|e| e.to_string())
+    }
+
     fn prepare_file_content(
         file_content: &str,
         file_path: &str,
         keywords: &HashMap<String, String>,
         options: &Options,
-    ) -> Result<(String, String), String> {
+    ) -> std::result::Result<(String, String), String> {
         let output = Keywords::replace_keywords(keywords, file_content);
         let path = Keywords::replace_keywords(keywords, file_path);
 
@@ -125,38 +227,124 @@ impl Template {
         Ok((path, final_output))
     }
 
-    pub fn extract(&mut self, keywords: &mut HashMap<String, String>) -> Result<(), String> {
-        let re = Regex::new(KEYWORDS_REGEX).map_err(|e| format!("Invalid regex: {}", e))?;
-        let mut options = self.options.take().unwrap_or_default();
-        let json_data = options.json_data.clone().unwrap_or(serde_json::Value::Null);
-        let files = self.files.take().unwrap_or_default();
+    /// Pure in-memory rendering of the template with the provided [`Context`].
+    /// Does NOT perform side effects (does not write files or init git repo).
+    ///
+    /// # Example
+    /// ```rust
+    /// use spark::{Template, Context};
+    ///
+    /// let template = Template::from_str(r#"
+    /// [[files]]
+    /// path = "{{$SLUG}}/greeting.txt"
+    /// content = "Hello {{$NAME}}!"
+    /// "#).unwrap();
+    ///
+    /// let ctx = Context::new()
+    ///     .with_var("SLUG", "myapp")
+    ///     .with_var("NAME", "World")
+    ///     .non_interactive();
+    ///
+    /// let rendered = template.render(&ctx).unwrap();
+    /// assert_eq!(rendered.len(), 1);
+    /// assert_eq!(rendered[0].path, "myapp/greeting.txt");
+    /// assert_eq!(rendered[0].content, "Hello World!");
+    /// ```
+    pub fn render(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
+        let re = Regex::new(KEYWORDS_REGEX)?;
+        let options = self.options.clone().unwrap_or_default();
+        let json_data = context
+            .json_data
+            .clone()
+            .or_else(|| options.json_data.clone())
+            .unwrap_or(serde_json::Value::Null);
+
+        let mut keywords = context.keywords.clone();
+        let files = self.files.as_deref().unwrap_or_default();
+        let mut rendered = Vec::with_capacity(files.len());
         let mut project = String::new();
+        let mut active_options = options;
 
         for file in files {
-            // Resolve functions/JSON in content and path before any keyword replacement.
-            // Combining content and path separated by newline ensures placeholders in either
-            // field are discovered together without forming synthetic tokens across boundaries.
+            Fns::find_and_resolve(
+                &format!("{}\n{}", file.content, file.path),
+                &mut keywords,
+                &re,
+                &json_data,
+                context.interactive,
+            )?;
+
+            if project.is_empty() {
+                project = Self::resolve_project_name(
+                    &mut keywords,
+                    &mut active_options,
+                    file,
+                    context.interactive,
+                )?;
+            }
+
+            let (path, final_output) =
+                Self::prepare_file_content(&file.content, &file.path, &keywords, &active_options)
+                    .map_err(crate::Error::Custom)?;
+
+            rendered.push(RenderedFile {
+                path,
+                content: final_output,
+            });
+        }
+
+        Ok(rendered)
+    }
+
+    /// Renders the template and writes all files to their target sinks (filesystem,
+    /// `stdout://`, `stderr://`, or `clipboard://`), handling git repository initialization
+    /// if enabled in template options.
+    pub fn extract_with_context(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
+        let rendered = self.render(context)?;
+
+        for file in &rendered {
+            OutputTarget::from_path(&file.path)
+                .write(&file.content)
+                .map_err(|e| crate::Error::OutputWrite {
+                    path: file.path.clone(),
+                    message: e.to_string(),
+                })?;
+        }
+
+        if let Some(options) = &self.options {
+            options.clone().handle();
+        }
+
+        Ok(rendered)
+    }
+
+    /// Legacy extraction method for backwards compatibility with CLI and tests.
+    pub fn extract(&mut self, keywords: &mut HashMap<String, String>) -> std::result::Result<(), String> {
+        let mut context = Context::from(keywords.clone());
+        if let Some(opts) = &self.options {
+            if let Some(ref jd) = opts.json_data {
+                if !jd.is_null() && context.json_data.is_none() {
+                    context.json_data = Some(jd.clone());
+                }
+            }
+        }
+
+        let _ = self
+            .extract_with_context(&context)
+            .map_err(|e| e.to_string())?;
+
+        // Re-populate caller's keywords map with discovered placeholders
+        let re = Regex::new(KEYWORDS_REGEX).map_err(|e| e.to_string())?;
+        let files = self.files.as_deref().unwrap_or_default();
+        let json_data = context.json_data.unwrap_or(serde_json::Value::Null);
+        for file in files {
             Fns::find_and_exec(
                 &format!("{}\n{}", file.content, file.path),
                 keywords,
                 &re,
                 &json_data,
             );
-
-            if project.is_empty() {
-                project = Self::handle_project_name(keywords, &mut options, &file)
-                    .map_err(|e| format!("Error handling project name: {}", e))?;
-            }
-
-            let (path, final_output) =
-                Self::prepare_file_content(&file.content, &file.path, keywords, &options)?;
-
-            OutputTarget::from_path(&path)
-                .write(&final_output)
-                .map_err(|e| format!("Output write error: {}", e))?;
         }
-
-        options.handle();
 
         Ok(())
     }

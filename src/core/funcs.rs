@@ -82,6 +82,16 @@ impl Fns {
         re: &Regex,
         json_data: &serde_json::Value,
     ) {
+        let _ = Self::find_and_resolve(txt, keywords, re, json_data, true);
+    }
+
+    pub fn find_and_resolve(
+        txt: &str,
+        keywords: &mut HashMap<String, String>,
+        re: &Regex,
+        json_data: &serde_json::Value,
+        interactive: bool,
+    ) -> Result<(), crate::Error> {
         if let Some(found) = Self::find(txt, keywords, re) {
             for (keyword_name, (keyword, function)) in found {
                 let final_keyword = Self::remove_fn_name(&keyword, function);
@@ -108,25 +118,30 @@ impl Fns {
                     }
                     continue;
                 }
-                if let Ok(value) = Self::exec(function, &keyword_name) {
-                    match function {
-                        Self::None => {
-                            eprintln!(
-                                "\n[{}] {}: {}",
-                                "WRN".yellow(),
-                                "Value not found".yellow(),
-                                keyword.green()
-                            );
-                            keywords.insert(keyword, String::new());
+
+                match function {
+                    Self::Read => {
+                        if !interactive {
+                            return Err(crate::Error::MissingVariable(keyword_name));
                         }
-                        _ => {
-                            keywords.insert(keyword.clone(), value.clone());
-                            keywords.insert(final_keyword, value);
-                        }
+                        let value: String = prompt(&keyword_name)
+                            .map_err(|e| crate::Error::Prompt(e.to_string()))?;
+                        keywords.insert(keyword.clone(), value.clone());
+                        keywords.insert(final_keyword, value);
+                    }
+                    Self::None => {
+                        eprintln!(
+                            "\n[{}] {}: {}",
+                            "WRN".yellow(),
+                            "Value not found".yellow(),
+                            keyword.green()
+                        );
+                        keywords.insert(keyword, String::new());
                     }
                 }
             }
         }
+        Ok(())
     }
 
     pub fn eval_json_filter(

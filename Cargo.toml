@@ -31,3 +31,4 @@ shellexpand = "3.1.0"
 toml = "0.5.9"
 walkdir = "2.5.0"
 arboard = { version = "3.4", features = ["wayland-data-control"] }
+thiserror = "1.0"

@@ -21,8 +21,9 @@ Spark is a powerful and flexible project initializer designed to simplify your w
 
 ## Table of Contents
 
-- [Why Spark? 🧠](#why-spark-)
+- [Why Spark? 🧠](#why-spark--)
 - [Installation](#installation)
+- [Using Spark as a Library 📦](#using-spark-as-a-library-)
 - [Creating Templates 📜](#creating-templates-)
 - [Dynamic Placeholders and Functions](#dynamic-placeholders-and-functions)
 - [Supply/Override Values from CLI (`--from`) 🏗️](#supplyoverride-values-from-cli---from-️)
@@ -81,7 +82,151 @@ spark --version
 
 ---
 
+## Using Spark as a Library 📦
+
+Spark is not only a CLI tool — it is a first-class Rust library crate. You can embed Spark's template engine directly into your own applications to perform **in-memory rendering**, **file scaffolding**, and **typed error handling**, all without shelling out.
+
+### Add to your project
+
+```toml
+[dependencies]
+spark = { git = "https://github.com/pwnxpl0it/spark" }
+```
+
+### Core types
+
+| Type | Description |
+|---|---|
+| `Template` | A parsed TOML template (files + options + info) |
+| `Context` | Variables, JSON data, and interactivity mode |
+| `RenderedFile` | Output of `Template::render` — evaluated path + content |
+| `Error` | Typed error enum (`InvalidPath`, `MissingVariable`, `Io`, …) |
+| `Result<T>` | `std::result::Result<T, spark::Error>` |
+
+### Parse a template
+
+```rust
+use spark::Template;
+
+// From a &str
+let template = Template::from_str(r#"
+[[files]]
+path = "{{$DIR}}/README.md"
+content = "# {{$NAME}}"
+"#)?;
+
+// From a file path
+let template = Template::from_file("~/.spark/templates/rust.toml")?;
+```
+
+### Build a template programmatically
+
+```rust
+use spark::{Template, File, Information};
+
+let template = Template::builder()
+    .with_info(Information::new(
+        Some("My App".into()),
+        Some("me".into()),
+        None,
+    ))
+    .with_file(File::create("src/main.rs", "fn main() {}"))
+    .with_file(File::create("README.md", "# {{$NAME}}"));
+```
+
+### Render in memory (no I/O)
+
+`Template::render` evaluates all placeholders and returns a `Vec<RenderedFile>` without touching the filesystem. Perfect for testing or preview.
+
+```rust
+use spark::{Template, Context};
+
+let template = Template::from_str(r#"
+[[files]]
+path = "{{$SLUG}}/main.rs"
+content = "// generated for {{$AUTHOR}}"
+"#)?;
+
+let ctx = Context::new()
+    .with_var("SLUG",   "my_crate")
+    .with_var("AUTHOR", "Alice")
+    .non_interactive();            // never blocks on stdin
+
+let files = template.render(&ctx)?;
+assert_eq!(files[0].path,    "my_crate/main.rs");
+assert_eq!(files[0].content, "// generated for Alice");
+```
+
+### Write files to disk (with output targets)
+
+`Template::extract_with_context` renders **and** writes to disk, `stdout://`, `stderr://`, or `clipboard://`.
+
+```rust
+use spark::{Template, Context};
+
+let template = Template::from_file("templates/backend.toml")?;
+
+let ctx = Context::new()
+    .with_var("NAME", "my_service")
+    .non_interactive();
+
+let written = template.extract_with_context(&ctx)?;
+for f in &written {
+    println!("wrote → {}", f.path);
+}
+```
+
+### Supply JSON data programmatically
+
+```rust
+use spark::{Template, Context};
+use serde_json::json;
+
+let template = Template::from_str(r#"
+[[files]]
+path = "{{$.user.name}}/profile.txt"
+content = "Email: {{$.user.email}}"
+"#)?;
+
+let ctx = Context::new()
+    .with_json(json!({
+        "user": { "name": "alice", "email": "alice@example.com" }
+    }))
+    .non_interactive();
+
+let files = template.render(&ctx)?;
+assert_eq!(files[0].path, "alice/profile.txt");
+```
+
+### Error handling
+
+```rust
+use spark::{Template, Context, Error};
+
+let template = Template::builder()
+    .with_file(File::create("{{$PROJECTNAME}}/main.rs", "fn main() {}"));
+
+let ctx = Context::new().non_interactive(); // PROJECTNAME not supplied
+
+match template.render(&ctx) {
+    Err(Error::MissingVariable(name)) => eprintln!("missing: {name}"),
+    Err(e) => eprintln!("error: {e}"),
+    Ok(files) => { /* ... */ }
+}
+```
+
+### API reference
+
+Full rustdoc is available by running:
+
+```sh
+cargo doc --open
+```
+
+---
+
 ## Creating Templates 📜
+
 
 To create a new template, run:
 
