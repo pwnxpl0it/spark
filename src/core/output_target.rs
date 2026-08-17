@@ -374,7 +374,10 @@ mod tests {
     fn clipboard_write_does_not_panic() {
         let result = OutputTarget::Clipboard.write("hello clipboard");
         // In CI / headless environments the clipboard may be unavailable.
-        // We just verify the call returns rather than panics.
-        let _ = result;
+        // We verify the call returns without panicking, and if an error occurs,
+        // it must have the expected ErrorKind::Other kind.
+        if let Err(e) = result {
+            assert_eq!(e.kind(), std::io::ErrorKind::Other);
+        }
     }
 }
