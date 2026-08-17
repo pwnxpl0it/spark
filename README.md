@@ -613,8 +613,7 @@ Hello {{$.user.name}}
 ```
 
 > [!NOTE]
-> JSON lookup uses `jq-rs` and has some performance cost.
-> [Why?](https://github.com/onelson/jq-rs?tab=readme-ov-file#a-note-on-performance)
+> JSON lookup uses [`jaq`](https://github.com/01mf02/jaq) (a fast, pure-Rust implementation of `jq`), requiring no external C libraries.
 
 ## Liquid Templating Support 🧪
 

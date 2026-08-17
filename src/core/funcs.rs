@@ -91,13 +91,8 @@ impl Fns {
                 }
 
                 if !json_data.is_null() && keyword_name.contains('.') {
-                    match jq_rs::run(&keyword_name, &json_data.to_string()) {
-                        Ok(raw) => {
-                            // jq outputs JSON; parse as a string value to preserve
-                            // embedded quotes, falling back to trimmed raw output for
-                            // non-string types (numbers, booleans, arrays).
-                            let resolved = serde_json::from_str::<String>(raw.trim())
-                                .unwrap_or_else(|_| raw.trim().to_string());
+                    match Self::eval_json_filter(&keyword_name, json_data) {
+                        Ok(resolved) => {
                             keywords.insert(keyword, resolved);
                         }
                         Err(e) => {
@@ -131,6 +126,46 @@ impl Fns {
                     }
                 }
             }
+        }
+    }
+
+    pub fn eval_json_filter(
+        filter_str: &str,
+        json_data: &serde_json::Value,
+    ) -> Result<String, String> {
+        use jaq_interpret::FilterT;
+
+        let mut defs = jaq_interpret::ParseCtx::new(Vec::new());
+
+        let (f, errs) = jaq_parse::parse(filter_str, jaq_parse::main());
+        if !errs.is_empty() {
+            return Err(format!("Parse error: {:?}", errs));
+        }
+        let f = match f {
+            Some(f) => defs.compile(f),
+            None => return Err("Failed to parse filter".to_string()),
+        };
+        if !defs.errs.is_empty() {
+            let err_msgs: Vec<String> = defs
+                .errs
+                .into_iter()
+                .map(|(e, _span)| e.to_string())
+                .collect();
+            return Err(format!("Filter compilation failed: {}", err_msgs.join(", ")));
+        }
+        let val = jaq_interpret::Val::from(json_data.clone());
+        let inputs = jaq_interpret::RcIter::new(core::iter::empty());
+        let mut out = f.run((jaq_interpret::Ctx::new([], &inputs), val));
+        if let Some(item) = out.next() {
+            match item {
+                Ok(val) => match val {
+                    jaq_interpret::Val::Str(s) => Ok((*s).clone()),
+                    other => Ok(other.to_string()),
+                },
+                Err(e) => Err(format!("{}", e)),
+            }
+        } else {
+            Err("No output from filter".to_string())
         }
     }
 }
