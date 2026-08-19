@@ -108,25 +108,81 @@ impl Fns {
                     }
                     continue;
                 }
-                if let Ok(value) = Self::exec(function, &keyword_name) {
-                    match function {
-                        Self::None => {
-                            eprintln!(
-                                "\n[{}] {}: {}",
-                                "WRN".yellow(),
-                                "Value not found".yellow(),
-                                keyword.green()
-                            );
-                            keywords.insert(keyword, String::new());
-                        }
-                        _ => {
-                            keywords.insert(keyword.clone(), value.clone());
-                            keywords.insert(final_keyword, value);
-                        }
+
+                match function {
+                    Self::Read => {
+                        let value: String =
+                            prompt(&keyword_name).unwrap_or_default();
+                        keywords.insert(keyword.clone(), value.clone());
+                        keywords.insert(final_keyword, value);
+                    }
+                    Self::None => {
+                        eprintln!(
+                            "\n[{}] {}: {}",
+                            "WRN".yellow(),
+                            "Value not found".yellow(),
+                            keyword.green()
+                        );
+                        keywords.insert(keyword, String::new());
                     }
                 }
             }
         }
+    }
+
+    pub fn find_and_resolve(
+        txt: &str,
+        keywords: &mut HashMap<String, String>,
+        re: &Regex,
+        json_data: &serde_json::Value,
+        interactive: bool,
+    ) -> Result<(), crate::Error> {
+        if let Some(found) = Self::find(txt, keywords, re) {
+            for (keyword_name, (keyword, function)) in found {
+                let final_keyword = Self::remove_fn_name(&keyword, function);
+                if keywords.contains_key(&final_keyword) {
+                    keywords.insert(keyword, keywords[&final_keyword].clone());
+                    continue;
+                }
+
+                if !json_data.is_null() && keyword_name.contains('.') {
+                    match Self::eval_json_filter(&keyword_name, json_data) {
+                        Ok(resolved) => {
+                            keywords.insert(keyword, resolved);
+                        }
+                        Err(e) => {
+                            return Err(crate::Error::JsonFilter(format!(
+                                "{}: {}",
+                                keyword_name, e
+                            )));
+                        }
+                    }
+                    continue;
+                }
+
+                match function {
+                    Self::Read => {
+                        if !interactive {
+                            return Err(crate::Error::MissingVariable(keyword_name));
+                        }
+                        let value: String = prompt(&keyword_name)
+                            .map_err(|e| crate::Error::Prompt(e.to_string()))?;
+                        keywords.insert(keyword.clone(), value.clone());
+                        keywords.insert(final_keyword, value);
+                    }
+                    Self::None => {
+                        eprintln!(
+                            "\n[{}] {}: {}",
+                            "WRN".yellow(),
+                            "Value not found".yellow(),
+                            keyword.green()
+                        );
+                        keywords.insert(keyword, String::new());
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn eval_json_filter(
