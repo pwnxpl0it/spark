@@ -250,7 +250,13 @@ impl Template {
     /// assert_eq!(rendered[0].path, "myapp/greeting.txt");
     /// assert_eq!(rendered[0].content, "Hello World!");
     /// ```
-    pub fn render(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
+    /// Inner rendering pipeline. Returns rendered files **and** the fully-resolved
+    /// keyword map so callers that need the resolved values (e.g. `extract`) can
+    /// obtain them without a second placeholder-scan pass.
+    fn render_inner(
+        &self,
+        context: &Context,
+    ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
         let re = Regex::new(KEYWORDS_REGEX)?;
         let options = self.options.clone().unwrap_or_default();
         let json_data = context
@@ -293,6 +299,11 @@ impl Template {
             });
         }
 
+        Ok((rendered, keywords))
+    }
+
+    pub fn render(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
+        let (rendered, _keywords) = self.render_inner(context)?;
         Ok(rendered)
     }
 
@@ -300,7 +311,7 @@ impl Template {
     /// `stdout://`, `stderr://`, or `clipboard://`), handling git repository initialization
     /// if enabled in template options.
     pub fn extract_with_context(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
-        let rendered = self.render(context)?;
+        let (rendered, _keywords) = self.render_inner(context)?;
 
         for file in &rendered {
             OutputTarget::from_path(&file.path)
@@ -329,39 +340,42 @@ impl Template {
             }
         }
 
-        let _ = self
-            .extract_with_context(&context)
+        let (_rendered, resolved_keywords) = self
+            .render_inner(&context)
             .map_err(|e| e.to_string())?;
 
-        // Re-populate caller's keywords map with discovered placeholders
-        let re = Regex::new(KEYWORDS_REGEX).map_err(|e| e.to_string())?;
-        let files = self.files.as_deref().unwrap_or_default();
-        let json_data = context.json_data.unwrap_or(serde_json::Value::Null);
-        for file in files {
-            Fns::find_and_exec(
-                &format!("{}\n{}", file.content, file.path),
-                keywords,
-                &re,
-                &json_data,
-            );
+        // Write outputs via the normal dispatch pipeline
+        for file in &_rendered {
+            OutputTarget::from_path(&file.path)
+                .write(&file.content)
+                .map_err(|e| e.to_string())?;
+        }
+
+        if let Some(options) = &self.options {
+            options.clone().handle();
+        }
+
+        // Copy resolved keyword values discovered during rendering back to the
+        // caller's map.  This replaces the former second Fns::find_and_exec scan
+        // which could interactively re-prompt or overwrite already-resolved values.
+        for (k, v) in resolved_keywords {
+            keywords.entry(k).or_insert(v);
         }
 
         Ok(())
     }
 
+
     pub fn show_info(template: &Self) {
-        match &template.info {
-            Some(information) => println!(
-                "{}: {}\n{}: {}\n{}: {}\n",
-                "Name".yellow(),
-                information.name.as_ref().unwrap().bold().green(),
-                "Description".yellow(),
-                information.description.as_ref().unwrap().bold().green(),
-                "Author".yellow(),
-                information.author.as_ref().unwrap().bold().green()
-            ),
-            None => {}
-        }
+        if let Some(information) = &template.info { println!(
+            "{}: {}\n{}: {}\n{}: {}\n",
+            "Name".yellow(),
+            information.name.as_ref().unwrap().bold().green(),
+            "Description".yellow(),
+            information.description.as_ref().unwrap().bold().green(),
+            "Author".yellow(),
+            information.author.as_ref().unwrap().bold().green()
+        ) }
     }
 }
 

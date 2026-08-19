@@ -13,6 +13,7 @@
 //! ```toml
 //! [dependencies]
 //! spark = "2.0.0"
+//! serde_json = "1"   # required for the json!() macro used in JSON examples
 //! ```
 //!
 //! ### Quick Example: In-Memory Rendering

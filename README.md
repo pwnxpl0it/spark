@@ -21,7 +21,7 @@ Spark is a powerful and flexible project initializer designed to simplify your w
 
 ## Table of Contents
 
-- [Why Spark? 🧠](#why-spark--)
+- [Why Spark? 🧠](#why-spark-)
 - [Installation](#installation)
 - [Using Spark as a Library 📦](#using-spark-as-a-library-)
 - [Creating Templates 📜](#creating-templates-)
@@ -91,6 +91,7 @@ Spark is not only a CLI tool — it is a first-class Rust library crate. You can
 ```toml
 [dependencies]
 spark = { git = "https://github.com/pwnxpl0it/spark" }
+serde_json = "1"   # required for the json!() macro used in JSON examples
 ```
 
 ### Core types
@@ -115,8 +116,9 @@ path = "{{$DIR}}/README.md"
 content = "# {{$NAME}}"
 "#)?;
 
-// From a file path
-let template = Template::from_file("~/.spark/templates/rust.toml")?;
+// From a file path – note: Rust does not expand `~`; construct the path explicitly
+let home = std::env::var("HOME").expect("HOME not set");
+let template = Template::from_file(format!("{home}/.spark/templates/rust.toml"))?;
 ```
 
 ### Build a template programmatically
@@ -201,7 +203,7 @@ assert_eq!(files[0].path, "alice/profile.txt");
 ### Error handling
 
 ```rust
-use spark::{Template, Context, Error};
+use spark::{Template, Context, Error, File};
 
 let template = Template::builder()
     .with_file(File::create("{{$PROJECTNAME}}/main.rs", "fn main() {}"));
