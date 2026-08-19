@@ -227,29 +227,6 @@ impl Template {
         Ok((path, final_output))
     }
 
-    /// Pure in-memory rendering of the template with the provided [`Context`].
-    /// Does NOT perform side effects (does not write files or init git repo).
-    ///
-    /// # Example
-    /// ```rust
-    /// use spark::{Template, Context};
-    ///
-    /// let template = Template::from_str(r#"
-    /// [[files]]
-    /// path = "{{$SLUG}}/greeting.txt"
-    /// content = "Hello {{$NAME}}!"
-    /// "#).unwrap();
-    ///
-    /// let ctx = Context::new()
-    ///     .with_var("SLUG", "myapp")
-    ///     .with_var("NAME", "World")
-    ///     .non_interactive();
-    ///
-    /// let rendered = template.render(&ctx).unwrap();
-    /// assert_eq!(rendered.len(), 1);
-    /// assert_eq!(rendered[0].path, "myapp/greeting.txt");
-    /// assert_eq!(rendered[0].content, "Hello World!");
-    /// ```
     /// Inner rendering pipeline. Returns rendered files **and** the fully-resolved
     /// keyword map so callers that need the resolved values (e.g. `extract`) can
     /// obtain them without a second placeholder-scan pass.
@@ -302,6 +279,29 @@ impl Template {
         Ok((rendered, keywords))
     }
 
+    /// Pure in-memory rendering of the template with the provided [`Context`].
+    /// Does NOT perform side effects (does not write files or init git repo).
+    ///
+    /// # Example
+    /// ```rust
+    /// use spark::{Template, Context};
+    ///
+    /// let template = Template::from_str(r#"
+    /// [[files]]
+    /// path = "{{$SLUG}}/greeting.txt"
+    /// content = "Hello {{$NAME}}!"
+    /// "#).unwrap();
+    ///
+    /// let ctx = Context::new()
+    ///     .with_var("SLUG", "myapp")
+    ///     .with_var("NAME", "World")
+    ///     .non_interactive();
+    ///
+    /// let rendered = template.render(&ctx).unwrap();
+    /// assert_eq!(rendered.len(), 1);
+    /// assert_eq!(rendered[0].path, "myapp/greeting.txt");
+    /// assert_eq!(rendered[0].content, "Hello World!");
+    /// ```
     pub fn render(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
         let (rendered, _keywords) = self.render_inner(context)?;
         Ok(rendered)
