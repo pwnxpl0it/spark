@@ -36,7 +36,7 @@ fn main() {
                 .to_str()
                 .unwrap()
         );
-        println!("{}: {}", "Creating Template".bold().green(), &dest.yellow());
+        println!("{}: {}", "Creating Template".bold().green(), dest.yellow());
         Template::generate(&dest).expect("Failed to generate template");
     } else if let Some(temp) = args.value_of("template") {
         let mut template = temp.to_string();
