@@ -217,6 +217,34 @@ for f in &written {
 }
 ```
 
+`Template::render` only evaluates placeholders in memory. `extract_with_context` is what dispatches to disk, `stdout://`, `stderr://`, or the clipboard.
+
+To copy rendered content to the clipboard, set the file path to `clipboard://`:
+
+```rust
+use spark::{Template, Context};
+
+let template = Template::from_str(r#"
+[[files]]
+path = "clipboard://"
+content = """
+{
+  "api_key": "{{$API_KEY}}",
+  "endpoint": "{{$ENDPOINT}}"
+}
+"""
+"#)?;
+
+let ctx = Context::new()
+    .with_var("API_KEY", "sk-...")
+    .with_var("ENDPOINT", "https://api.example.com")
+    .non_interactive();
+
+template.extract_with_context(&ctx)?;
+```
+
+On headless systems (CI, SSH without a display) the clipboard write fails with `Error::OutputWrite` rather than panicking.
+
 ### Supply JSON data programmatically
 
 ```rust
