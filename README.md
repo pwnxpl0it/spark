@@ -159,6 +159,45 @@ assert_eq!(files[0].path,    "my_crate/main.rs");
 assert_eq!(files[0].content, "// generated for Alice");
 ```
 
+### Supply variables from a HashMap
+
+`Context::with_vars` accepts any iterator of pairs, including a `HashMap`. Bare keys like `"NAME"` are formatted as `{{$NAME}}` automatically — the same as `with_var`.
+
+```rust
+use std::collections::HashMap;
+use spark::{Template, Context};
+
+let template = Template::from_str(r#"
+[[files]]
+path = "{{$SLUG}}/main.rs"
+content = "// generated for {{$AUTHOR}}"
+"#)?;
+
+let mut vars = HashMap::new();
+vars.insert("SLUG", "my_crate");
+vars.insert("AUTHOR", "Alice");
+
+let ctx = Context::new()
+    .with_vars(vars)
+    .non_interactive();
+
+let files = template.render(&ctx)?;
+assert_eq!(files[0].path, "my_crate/main.rs");
+```
+
+Arrays work the same way:
+
+```rust
+let ctx = Context::new()
+    .with_vars([
+        ("NAME", "alice"),
+        ("ROLE", "admin"),
+    ])
+    .non_interactive();
+```
+
+Prefer `with_vars` over `Context::from(hashmap)`. `From` copies keys as-is, so they must already be in `{{$NAME}}` form or placeholders will not be substituted.
+
 ### Write files to disk (with output targets)
 
 `Template::extract_with_context` renders **and** writes to disk, `stdout://`, `stderr://`, or `clipboard://`.
