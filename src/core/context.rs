@@ -67,6 +67,42 @@ impl Context {
     }
 
     /// Extends the context with multiple key-value variable pairs.
+    ///
+    /// Accepts any iterator of pairs, including a [`HashMap`]. Bare keys like
+    /// `"NAME"` are formatted as `{{$NAME}}` automatically — the same as
+    /// [`Context::with_var`].
+    ///
+    /// Prefer this over [`Context::from`] with a [`HashMap`]. `From` copies keys
+    /// as-is, so they must already be in `{{$NAME}}` form or placeholders will
+    /// not be substituted.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use std::collections::HashMap;
+    /// use spark::Context;
+    ///
+    /// let mut vars = HashMap::new();
+    /// vars.insert("NAME", "Alice");
+    /// vars.insert("ROLE", "Admin");
+    ///
+    /// let ctx = Context::new().with_vars(vars);
+    ///
+    /// assert_eq!(ctx.get_var("NAME"), Some("Alice"));
+    /// assert_eq!(ctx.get_var("ROLE"), Some("Admin"));
+    /// ```
+    ///
+    /// Arrays work the same way:
+    ///
+    /// ```rust
+    /// use spark::Context;
+    ///
+    /// let ctx = Context::new().with_vars([
+    ///     ("NAME", "Alice"),
+    ///     ("ROLE", "Admin"),
+    /// ]);
+    ///
+    /// assert_eq!(ctx.get_var("NAME"), Some("Alice"));
+    /// ```
     pub fn with_vars<I, K, V>(mut self, vars: I) -> Self
     where
         I: IntoIterator<Item = (K, V)>,

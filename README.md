@@ -159,6 +159,45 @@ assert_eq!(files[0].path,    "my_crate/main.rs");
 assert_eq!(files[0].content, "// generated for Alice");
 ```
 
+### Supply variables from a HashMap
+
+`Context::with_vars` accepts any iterator of pairs, including a `HashMap`. Bare keys like `"NAME"` are formatted as `{{$NAME}}` automatically — the same as `with_var`.
+
+```rust
+use std::collections::HashMap;
+use spark::{Template, Context};
+
+let template = Template::from_str(r#"
+[[files]]
+path = "{{$SLUG}}/main.rs"
+content = "// generated for {{$AUTHOR}}"
+"#)?;
+
+let mut vars = HashMap::new();
+vars.insert("SLUG", "my_crate");
+vars.insert("AUTHOR", "Alice");
+
+let ctx = Context::new()
+    .with_vars(vars)
+    .non_interactive();
+
+let files = template.render(&ctx)?;
+assert_eq!(files[0].path, "my_crate/main.rs");
+```
+
+Arrays work the same way:
+
+```rust
+let ctx = Context::new()
+    .with_vars([
+        ("NAME", "alice"),
+        ("ROLE", "admin"),
+    ])
+    .non_interactive();
+```
+
+Prefer `with_vars` over `Context::from(hashmap)`. `From` copies keys as-is, so they must already be in `{{$NAME}}` form or placeholders will not be substituted.
+
 ### Write files to disk (with output targets)
 
 `Template::extract_with_context` renders **and** writes to disk, `stdout://`, `stderr://`, or `clipboard://`.
@@ -177,6 +216,34 @@ for f in &written {
     println!("wrote → {}", f.path);
 }
 ```
+
+`Template::render` only evaluates placeholders in memory. `extract_with_context` is what dispatches to disk, `stdout://`, `stderr://`, or the clipboard.
+
+To copy rendered content to the clipboard, set the file path to `clipboard://`:
+
+```rust
+use spark::{Template, Context};
+
+let template = Template::from_str(r#"
+[[files]]
+path = "clipboard://"
+content = """
+{
+  "api_key": "{{$API_KEY}}",
+  "endpoint": "{{$ENDPOINT}}"
+}
+"""
+"#)?;
+
+let ctx = Context::new()
+    .with_var("API_KEY", "sk-...")
+    .with_var("ENDPOINT", "https://api.example.com")
+    .non_interactive();
+
+template.extract_with_context(&ctx)?;
+```
+
+On headless systems (CI, SSH without a display) the clipboard write fails with `Error::OutputWrite` rather than panicking.
 
 ### Supply JSON data programmatically
 
