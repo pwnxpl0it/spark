@@ -1,5 +1,6 @@
 use colored::*;
-use std::{fs, io, path::Path};
+use std::io::{self, Read};
+use std::{fs, fs::File, path::Path};
 use walkdir::WalkDir;
 
 #[allow(dead_code)]
@@ -18,6 +19,13 @@ pub fn create_dirs(dir: &str) {
         }
         Err(e) => eprintln!("{}: Failed to expand path '{}': {}", "error".red(), dir, e),
     }
+}
+
+pub fn is_bin(path: &str) -> bool {
+    let mut file = File::open(path).unwrap();
+    let mut buff = [0u8; 1024];
+    let bytes_read = file.read(&mut buff).unwrap();
+    buff[..bytes_read].contains(&b'\0')
 }
 
 pub fn write_content<P: AsRef<Path>>(path: P, content: &str) -> std::io::Result<()> {
