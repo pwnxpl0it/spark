@@ -102,11 +102,7 @@ pub struct Information {
 
 impl Information {
     /// Creates a new `Information` metadata container.
-    pub fn new(
-        name: Option<String>,
-        author: Option<String>,
-        description: Option<String>,
-    ) -> Self {
+    pub fn new(name: Option<String>, author: Option<String>, description: Option<String>) -> Self {
         Self {
             name,
             author,
@@ -252,10 +248,8 @@ content = "Hello"
 
     #[test]
     fn template_render_non_interactive_fails_on_missing_read_variable() {
-        let template = Template::builder().with_file(File::create(
-            "greeting.txt",
-            "Welcome, {{$NAME:read}}!",
-        ));
+        let template =
+            Template::builder().with_file(File::create("greeting.txt", "Welcome, {{$NAME:read}}!"));
 
         let context = Context::new().non_interactive();
         let result = template.render(&context);

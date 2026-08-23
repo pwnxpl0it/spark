@@ -127,11 +127,15 @@ impl Template {
             .unwrap_or_default()
             .into_iter()
             .filter(|file| !file.contains(".git"))
-            .map(|file| {
-                File::new(
+            .filter_map(|file| {
+                if is_bin(&file) {
+                    return None;
+                }
+
+                Some(File::new(
                     file.replace("./", ""),
                     fs::read_to_string(&file).unwrap_or_default(),
-                )
+                ))
             })
             .collect();
 
@@ -188,8 +192,8 @@ impl Template {
                 return Err(crate::Error::MissingVariable("PROJECTNAME".to_string()));
             }
 
-            let project_name: String = prompt("Project name")
-                .map_err(|e| crate::Error::Prompt(e.to_string()))?;
+            let project_name: String =
+                prompt("Project name").map_err(|e| crate::Error::Prompt(e.to_string()))?;
 
             keywords.insert("{{$PROJECTNAME}}".to_string(), project_name.clone());
             options.set_project_root(&project_name);
@@ -205,8 +209,7 @@ impl Template {
         options: &mut Options,
         file: &File,
     ) -> std::result::Result<String, String> {
-        Self::resolve_project_name(keywords, options, file, true)
-            .map_err(|e| e.to_string())
+        Self::resolve_project_name(keywords, options, file, true).map_err(|e| e.to_string())
     }
 
     fn prepare_file_content(
@@ -330,7 +333,10 @@ impl Template {
     }
 
     /// Legacy extraction method for backwards compatibility with CLI and tests.
-    pub fn extract(&mut self, keywords: &mut HashMap<String, String>) -> std::result::Result<(), String> {
+    pub fn extract(
+        &mut self,
+        keywords: &mut HashMap<String, String>,
+    ) -> std::result::Result<(), String> {
         let mut context = Context::from(keywords.clone());
         if let Some(opts) = &self.options {
             if let Some(ref jd) = opts.json_data {
@@ -340,9 +346,8 @@ impl Template {
             }
         }
 
-        let (_rendered, resolved_keywords) = self
-            .render_inner(&context)
-            .map_err(|e| e.to_string())?;
+        let (_rendered, resolved_keywords) =
+            self.render_inner(&context).map_err(|e| e.to_string())?;
 
         // Write outputs via the normal dispatch pipeline
         for file in &_rendered {
@@ -365,17 +370,18 @@ impl Template {
         Ok(())
     }
 
-
     pub fn show_info(template: &Self) {
-        if let Some(information) = &template.info { println!(
-            "{}: {}\n{}: {}\n{}: {}\n",
-            "Name".yellow(),
-            information.name.as_ref().unwrap().bold().green(),
-            "Description".yellow(),
-            information.description.as_ref().unwrap().bold().green(),
-            "Author".yellow(),
-            information.author.as_ref().unwrap().bold().green()
-        ) }
+        if let Some(information) = &template.info {
+            println!(
+                "{}: {}\n{}: {}\n{}: {}\n",
+                "Name".yellow(),
+                information.name.as_ref().unwrap().bold().green(),
+                "Description".yellow(),
+                information.description.as_ref().unwrap().bold().green(),
+                "Author".yellow(),
+                information.author.as_ref().unwrap().bold().green()
+            )
+        }
     }
 }
 

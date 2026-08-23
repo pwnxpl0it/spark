@@ -111,8 +111,7 @@ impl Fns {
 
                 match function {
                     Self::Read => {
-                        let value: String =
-                            prompt(&keyword_name).unwrap_or_default();
+                        let value: String = prompt(&keyword_name).unwrap_or_default();
                         keywords.insert(keyword.clone(), value.clone());
                         keywords.insert(final_keyword, value);
                     }
@@ -207,7 +206,10 @@ impl Fns {
                 .into_iter()
                 .map(|(e, _span)| e.to_string())
                 .collect();
-            return Err(format!("Filter compilation failed: {}", err_msgs.join(", ")));
+            return Err(format!(
+                "Filter compilation failed: {}",
+                err_msgs.join(", ")
+            ));
         }
         let val = jaq_interpret::Val::from(json_data.clone());
         let inputs = jaq_interpret::RcIter::new(core::iter::empty());
