@@ -1192,11 +1192,13 @@ Status: {{{{$.status[0]}}}}
     #[test]
     fn generate_filters_binary_file_with_nul_after_1024_bytes() {
         let temp_bin_file = Path::new("./spark_test_nul_after_1024.bin");
+        let temp_invalid_utf8 = Path::new("./spark_test_invalid_utf8.dat");
         let temp_txt_file = Path::new("./spark_test_valid_text.txt");
         let dest_file = Path::new("./spark_test_generated_template.toml");
 
         let cleanup = || {
             let _ = fs::remove_file(temp_bin_file);
+            let _ = fs::remove_file(temp_invalid_utf8);
             let _ = fs::remove_file(temp_txt_file);
             let _ = fs::remove_file(dest_file);
         };
@@ -1206,6 +1208,9 @@ Status: {{{{$.status[0]}}}}
         let mut bin_data = vec![b'a'; 1500];
         bin_data[1200] = 0;
         fs::write(temp_bin_file, &bin_data).unwrap();
+
+        // Create an invalid UTF-8 binary file
+        fs::write(temp_invalid_utf8, &[0xFF, 0xFE, 0xFD]).unwrap();
 
         // Create a valid text file
         fs::write(temp_txt_file, "valid text content").unwrap();
@@ -1222,6 +1227,12 @@ Status: {{{{$.status[0]}}}}
                 .iter()
                 .any(|f| f.path.contains("spark_test_nul_after_1024.bin")),
             "Binary file with NUL past 1024 bytes should be filtered out"
+        );
+        assert!(
+            !files
+                .iter()
+                .any(|f| f.path.contains("spark_test_invalid_utf8.dat")),
+            "Invalid UTF-8 file should be filtered out"
         );
         assert!(
             files
