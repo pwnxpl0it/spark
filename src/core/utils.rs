@@ -1,6 +1,6 @@
 use colored::*;
-use std::io::{self, Read};
-use std::{fs, fs::File, path::Path};
+use std::io;
+use std::{fs, path::Path};
 use walkdir::WalkDir;
 
 #[allow(dead_code)]
@@ -19,13 +19,6 @@ pub fn create_dirs(dir: &str) {
         }
         Err(e) => eprintln!("{}: Failed to expand path '{}': {}", "error".red(), dir, e),
     }
-}
-
-pub fn is_bin(path: &str) -> io::Result<bool> {
-    let mut file = File::open(path)?;
-    let mut buff = [0u8; 1024];
-    let bytes_read = file.read(&mut buff)?;
-    Ok(buff[..bytes_read].contains(&b'\0'))
 }
 
 pub fn write_content<P: AsRef<Path>>(path: P, content: &str) -> std::io::Result<()> {
@@ -130,25 +123,5 @@ mod tests {
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 
         let _ = fs::remove_file(&file_path);
-    }
-
-    #[test]
-    fn is_bin_detects_binary_and_text_files() {
-        let test_dir = std::env::temp_dir().join("spark_test_is_bin");
-        let _ = fs::remove_dir_all(&test_dir);
-        fs::create_dir_all(&test_dir).unwrap();
-
-        let text_file = test_dir.join("text.txt");
-        let bin_file = test_dir.join("binary.bin");
-        fs::write(&text_file, "hello world").unwrap();
-        fs::write(&bin_file, b"hello\0world").unwrap();
-
-        assert_eq!(super::is_bin(&text_file.to_string_lossy()).unwrap(), false);
-        assert_eq!(super::is_bin(&bin_file.to_string_lossy()).unwrap(), true);
-
-        let non_existent = test_dir.join("non_existent.txt");
-        assert!(super::is_bin(&non_existent.to_string_lossy()).is_err());
-
-        let _ = fs::remove_dir_all(&test_dir);
     }
 }
