@@ -127,11 +127,20 @@ impl Template {
             .unwrap_or_default()
             .into_iter()
             .filter(|file| !file.contains(".git"))
-            .map(|file| {
-                File::new(
+            .filter_map(|file| {
+                let content = match fs::read_to_string(&file) {
+                    Ok(c) => c,
+                    Err(_) => return None,
+                };
+
+                if content.contains('\0') {
+                    return None;
+                }
+
+                Some(File::new(
                     file.replace("./", ""),
-                    fs::read_to_string(&file).unwrap_or_default(),
-                )
+                    content,
+                ))
             })
             .collect();
 
@@ -188,8 +197,8 @@ impl Template {
                 return Err(crate::Error::MissingVariable("PROJECTNAME".to_string()));
             }
 
-            let project_name: String = prompt("Project name")
-                .map_err(|e| crate::Error::Prompt(e.to_string()))?;
+            let project_name: String =
+                prompt("Project name").map_err(|e| crate::Error::Prompt(e.to_string()))?;
 
             keywords.insert("{{$PROJECTNAME}}".to_string(), project_name.clone());
             options.set_project_root(&project_name);
@@ -205,8 +214,7 @@ impl Template {
         options: &mut Options,
         file: &File,
     ) -> std::result::Result<String, String> {
-        Self::resolve_project_name(keywords, options, file, true)
-            .map_err(|e| e.to_string())
+        Self::resolve_project_name(keywords, options, file, true).map_err(|e| e.to_string())
     }
 
     fn prepare_file_content(
@@ -330,7 +338,10 @@ impl Template {
     }
 
     /// Legacy extraction method for backwards compatibility with CLI and tests.
-    pub fn extract(&mut self, keywords: &mut HashMap<String, String>) -> std::result::Result<(), String> {
+    pub fn extract(
+        &mut self,
+        keywords: &mut HashMap<String, String>,
+    ) -> std::result::Result<(), String> {
         let mut context = Context::from(keywords.clone());
         if let Some(opts) = &self.options {
             if let Some(ref jd) = opts.json_data {
@@ -340,9 +351,8 @@ impl Template {
             }
         }
 
-        let (_rendered, resolved_keywords) = self
-            .render_inner(&context)
-            .map_err(|e| e.to_string())?;
+        let (_rendered, resolved_keywords) =
+            self.render_inner(&context).map_err(|e| e.to_string())?;
 
         // Write outputs via the normal dispatch pipeline
         for file in &_rendered {
@@ -365,17 +375,18 @@ impl Template {
         Ok(())
     }
 
-
     pub fn show_info(template: &Self) {
-        if let Some(information) = &template.info { println!(
-            "{}: {}\n{}: {}\n{}: {}\n",
-            "Name".yellow(),
-            information.name.as_ref().unwrap().bold().green(),
-            "Description".yellow(),
-            information.description.as_ref().unwrap().bold().green(),
-            "Author".yellow(),
-            information.author.as_ref().unwrap().bold().green()
-        ) }
+        if let Some(information) = &template.info {
+            println!(
+                "{}: {}\n{}: {}\n{}: {}\n",
+                "Name".yellow(),
+                information.name.as_ref().unwrap().bold().green(),
+                "Description".yellow(),
+                information.description.as_ref().unwrap().bold().green(),
+                "Author".yellow(),
+                information.author.as_ref().unwrap().bold().green()
+            )
+        }
     }
 }
 
@@ -1176,5 +1187,60 @@ Status: {{{{$.status[0]}}}}
         );
 
         let _ = fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
+    fn generate_filters_binary_file_with_nul_after_1024_bytes() {
+        let temp_bin_file = Path::new("./spark_test_nul_after_1024.bin");
+        let temp_invalid_utf8 = Path::new("./spark_test_invalid_utf8.dat");
+        let temp_txt_file = Path::new("./spark_test_valid_text.txt");
+        let dest_file = Path::new("./spark_test_generated_template.toml");
+
+        let cleanup = || {
+            let _ = fs::remove_file(temp_bin_file);
+            let _ = fs::remove_file(temp_invalid_utf8);
+            let _ = fs::remove_file(temp_txt_file);
+            let _ = fs::remove_file(dest_file);
+        };
+        cleanup();
+
+        // Create a binary file with NUL byte past 1024 bytes
+        let mut bin_data = vec![b'a'; 1500];
+        bin_data[1200] = 0;
+        fs::write(temp_bin_file, &bin_data).unwrap();
+
+        // Create an invalid UTF-8 binary file
+        fs::write(temp_invalid_utf8, &[0xFF, 0xFE, 0xFD]).unwrap();
+
+        // Create a valid text file
+        fs::write(temp_txt_file, "valid text content").unwrap();
+
+        let res = Template::generate(dest_file.to_str().unwrap());
+        assert!(res.is_ok());
+
+        let generated_content = fs::read_to_string(dest_file).unwrap();
+        let parsed: Template = toml::from_str(&generated_content).unwrap();
+        let files = parsed.files.unwrap_or_default();
+
+        assert!(
+            !files
+                .iter()
+                .any(|f| f.path.contains("spark_test_nul_after_1024.bin")),
+            "Binary file with NUL past 1024 bytes should be filtered out"
+        );
+        assert!(
+            !files
+                .iter()
+                .any(|f| f.path.contains("spark_test_invalid_utf8.dat")),
+            "Invalid UTF-8 file should be filtered out"
+        );
+        assert!(
+            files
+                .iter()
+                .any(|f| f.path.contains("spark_test_valid_text.txt")),
+            "Valid text file should be included in generated template"
+        );
+
+        cleanup();
     }
 }

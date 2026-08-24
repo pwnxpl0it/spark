@@ -1,5 +1,6 @@
 use colored::*;
-use std::{fs, io, path::Path};
+use std::io;
+use std::{fs, path::Path};
 use walkdir::WalkDir;
 
 #[allow(dead_code)]
