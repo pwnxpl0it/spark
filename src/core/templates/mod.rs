@@ -207,15 +207,6 @@ impl Template {
         }
     }
 
-    #[allow(dead_code)]
-    fn handle_project_name(
-        keywords: &mut HashMap<String, String>,
-        options: &mut Options,
-        file: &File,
-    ) -> std::result::Result<String, String> {
-        Self::resolve_project_name(keywords, options, file, true).map_err(|e| e.to_string())
-    }
-
     fn prepare_file_content(
         file_content: &str,
         file_path: &str,
@@ -314,11 +305,13 @@ impl Template {
         Ok(rendered)
     }
 
-    /// Renders the template and writes all files to their target sinks (filesystem,
-    /// `stdout://`, `stderr://`, or `clipboard://`), handling git repository initialization
-    /// if enabled in template options.
-    pub fn extract_with_context(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
-        let (rendered, _keywords) = self.render_inner(context)?;
+    /// Renders, writes every file to its sink, and runs the git hook.
+    /// Returns rendered files plus the fully-resolved keyword map.
+    fn extract_inner(
+        &self,
+        context: &Context,
+    ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
+        let (rendered, keywords) = self.render_inner(context)?;
 
         for file in &rendered {
             OutputTarget::from_path(&file.path)
@@ -333,40 +326,30 @@ impl Template {
             options.clone().handle();
         }
 
+        Ok((rendered, keywords))
+    }
+
+    /// Renders the template and writes all files to their target sinks (filesystem,
+    /// `stdout://`, `stderr://`, or `clipboard://`), handling git repository initialization
+    /// if enabled in template options.
+    pub fn extract_with_context(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
+        let (rendered, _keywords) = self.extract_inner(context)?;
         Ok(rendered)
     }
 
     /// Legacy extraction method for backwards compatibility with CLI and tests.
+    ///
+    /// Builds an interactive [`Context`] from `keywords`, runs
+    /// [`Template::extract_with_context`], and copies every keyword resolved
+    /// during rendering (prompts, JSON lookups) back into the caller's map.
     pub fn extract(
         &mut self,
         keywords: &mut HashMap<String, String>,
     ) -> std::result::Result<(), String> {
-        let mut context = Context::from(keywords.clone());
-        if let Some(opts) = &self.options {
-            if let Some(ref jd) = opts.json_data {
-                if !jd.is_null() && context.json_data.is_none() {
-                    context.json_data = Some(jd.clone());
-                }
-            }
-        }
-
+        let context = Context::from(keywords.clone());
         let (_rendered, resolved_keywords) =
-            self.render_inner(&context).map_err(|e| e.to_string())?;
+            self.extract_inner(&context).map_err(|e| e.to_string())?;
 
-        // Write outputs via the normal dispatch pipeline
-        for file in &_rendered {
-            OutputTarget::from_path(&file.path)
-                .write(&file.content)
-                .map_err(|e| e.to_string())?;
-        }
-
-        if let Some(options) = &self.options {
-            options.clone().handle();
-        }
-
-        // Copy resolved keyword values discovered during rendering back to the
-        // caller's map.  This replaces the former second Fns::find_and_exec scan
-        // which could interactively re-prompt or overwrite already-resolved values.
         for (k, v) in resolved_keywords {
             keywords.entry(k).or_insert(v);
         }
@@ -462,12 +445,13 @@ mod tests {
     }
 
     #[test]
-    fn handle_project_name_without_placeholder_is_noop() {
+    fn resolve_project_name_without_placeholder_is_noop() {
         let mut keywords = HashMap::new();
         let mut options = Options::default();
         let file = File::new("test.txt".into(), "hello world".into());
 
-        let result = Template::handle_project_name(&mut keywords, &mut options, &file).unwrap();
+        let result =
+            Template::resolve_project_name(&mut keywords, &mut options, &file, true).unwrap();
         assert!(result.is_empty());
         assert!(!keywords.contains_key("{{$PROJECTNAME}}"));
     }

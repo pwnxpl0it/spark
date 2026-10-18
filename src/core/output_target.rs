@@ -84,8 +84,8 @@ impl OutputTarget {
 
     /// Write `content` to the target.
     ///
-    /// For [`OutputTarget::File`] the path is shell-expanded (same behaviour
-    /// as the existing [`crate::utils::write_content`]).
+    /// For [`OutputTarget::File`] the path is shell-expanded and parent
+    /// directories are created.
     pub fn write(&self, content: &str) -> std::io::Result<()> {
         match self {
             Self::Stdout => {
