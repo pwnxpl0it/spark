@@ -1,109 +1,196 @@
 use crate::config::*;
 use colored::*;
 use dotenvy::dotenv;
-use spark::{Context, Keywords, MissingPolicy, Template};
+use spark::{Context, Error, Keywords, MissingPolicy, Template};
+use std::collections::HashMap;
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 mod args;
 mod config;
 use args::{Cli, Commands};
 
-fn main() {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{}: {}", "error".red().bold(), e);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> spark::Result<()> {
     let args = Cli::parse_args();
     let config = Config::new(&args.config);
     dotenv().ok();
     let mut keywords = Keywords::init();
-    keywords.extend(config.clone().get_keywords());
+    keywords.extend(config.get_keywords());
 
     if let Some(pairs) = args.keywords.as_deref() {
-        let keys: Vec<&str> = pairs.split(',').collect();
-        for key in keys {
-            let (keyword, value) = key.split_once('=').unwrap();
-            keywords.insert(
-                Keywords::from(keyword.trim(), None),
-                value.trim().to_string(),
-            );
+        parse_from_pairs(pairs, &mut keywords)?;
+    }
+
+    match (&args.command, args.template.as_deref()) {
+        (Some(Commands::Init), _) => run_init(),
+        (None, Some(template)) => run_template(&args, &config, template, keywords),
+        (None, None) => Err(Error::Custom(format!(
+            "no template specified, see {}",
+            "--help".bold().green()
+        ))),
+    }
+}
+
+/// Parses `--from "k=v, k2=v2"` into the keyword map.
+fn parse_from_pairs(pairs: &str, keywords: &mut HashMap<String, String>) -> spark::Result<()> {
+    for pair in pairs.split(',') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        let (keyword, value) = pair.split_once('=').ok_or_else(|| {
+            Error::Custom(format!(
+                "invalid --from entry '{}': expected KEY=VALUE",
+                pair
+            ))
+        })?;
+        let keyword = keyword.trim();
+        if keyword.is_empty() {
+            return Err(Error::Custom(format!(
+                "invalid --from entry '{}': empty key",
+                pair
+            )));
+        }
+        keywords.insert(Keywords::from(keyword, None), value.trim().to_string());
+    }
+    Ok(())
+}
+
+fn run_init() -> spark::Result<()> {
+    let cwd = std::env::current_dir()?;
+    let name = cwd.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+        Error::Custom("cannot derive a template name from the current directory".into())
+    })?;
+    let dest = format!("{name}.toml");
+    println!("{}: {}", "Creating Template".bold().green(), dest.yellow());
+    Template::generate(&dest).map_err(Error::Custom)
+}
+
+/// Resolves `<name>` to a template file: a local path first, then the
+/// templates directory next to the config file.
+fn resolve_template_path(config: &Config, template: &str) -> spark::Result<PathBuf> {
+    let mut name = template.to_string();
+    if !name.ends_with(".toml") {
+        name.push_str(".toml");
+    }
+
+    let local = PathBuf::from(&name);
+    if local.is_file() {
+        return Ok(local);
+    }
+
+    let in_config = Path::new(&config.templates_path).join(&name);
+    if in_config.is_file() {
+        return Ok(in_config);
+    }
+
+    Err(Error::Custom(format!(
+        "template '{}' not found (looked for '{}' and '{}')",
+        template,
+        local.display(),
+        in_config.display()
+    )))
+}
+
+fn run_template(
+    args: &Cli,
+    config: &Config,
+    template: &str,
+    keywords: HashMap<String, String>,
+) -> spark::Result<()> {
+    let template_path = resolve_template_path(config, template)?;
+    let mut parsed_template = Template::from_file(&template_path)
+        .map_err(|e| Error::Custom(format!("{}: {}", template_path.display(), e)))?;
+
+    if !args.quiet {
+        println!(
+            "\n{}: {}",
+            "Using Template".blue(),
+            template_path.display().to_string().magenta()
+        );
+        Template::show_info(&parsed_template);
+    }
+
+    let mut options = parsed_template.dump_options().unwrap_or_default();
+
+    if let Some(json_path) = &args.json {
+        let json_file = fs::read_to_string(json_path)
+            .map_err(|e| Error::Custom(format!("{}: {}", json_path.display(), e)))?;
+        let json_data = serde_json::from_str(&json_file)
+            .map_err(|e| Error::Custom(format!("{}: {}", json_path.display(), e)))?;
+        options.set_json(json_data);
+    }
+
+    if args.git {
+        options.set_git(true);
+        // Only fall back to prompting for a project name when the template
+        // did not already define where the repository root lives.
+        if options.project_root.trim().is_empty() {
+            options.project_root = "{{$PROJECTNAME}}".to_string();
         }
     }
 
-    if matches!(args.command, Some(Commands::Init)) {
-        let dest = format!(
-            "{}.toml",
-            std::env::current_dir()
-                .unwrap()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-        );
-        println!("{}: {}", "Creating Template".bold().green(), dest.yellow());
-        Template::generate(&dest).expect("Failed to generate template");
-    } else if let Some(temp) = args.template.as_deref() {
-        let mut template = temp.to_string();
+    if args.no_liquid {
+        options.use_liquid = Some(false);
+    } else if args.liquid {
+        options.use_liquid = Some(true);
+    }
 
-        if !template.ends_with(".toml") {
-            template.push_str(".toml");
-        }
+    parsed_template.set_options(options);
 
-        let full_template_path = if fs::read_to_string(&template).is_err() {
-            format!("{}/{}", config.templates_path, template)
-        } else {
-            template
-        };
+    let mut context = Context::from(keywords);
+    if args.strict {
+        context = context.on_missing(MissingPolicy::Error);
+    }
+    parsed_template.extract_with_context(&context)?;
+    Ok(())
+}
 
-        let template_content = fs::read_to_string(&full_template_path).unwrap_or_else(|_| {
-            panic!(
-                "{}: {}",
-                "Failed to read template".red().bold(),
-                full_template_path
-            )
-        });
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        let mut parsed_template: Template = toml::from_str(&template_content).unwrap();
+    #[test]
+    fn from_pairs_populate_keywords() {
+        let mut k = HashMap::new();
+        parse_from_pairs("PROJECTNAME=myapp, author=alice, version=1.0", &mut k).unwrap();
+        assert_eq!(k.get("{{$PROJECTNAME}}").map(String::as_str), Some("myapp"));
+        assert_eq!(k.get("{{$author}}").map(String::as_str), Some("alice"));
+        assert_eq!(k.get("{{$version}}").map(String::as_str), Some("1.0"));
+    }
 
-        if !args.quiet {
-            println!(
-                "\n{}: {}",
-                "Using Template".blue(),
-                full_template_path.magenta()
-            );
-            Template::show_info(&parsed_template);
-        }
+    #[test]
+    fn from_pairs_reject_malformed_entries() {
+        let mut k = HashMap::new();
+        assert!(parse_from_pairs("novalue", &mut k).is_err());
+        assert!(parse_from_pairs("=x", &mut k).is_err());
+        assert!(k.is_empty());
+    }
 
-        let mut options = parsed_template.dump_options().unwrap_or_default();
+    #[test]
+    fn resolve_template_prefers_local_then_config_dir() {
+        let dir = std::env::temp_dir().join("spark_test_resolve_template");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("templates")).unwrap();
+        fs::write(dir.join("templates/demo.toml"), "").unwrap();
+        let config = Config::new(&dir.join("config.toml").to_string_lossy());
 
-        if let Some(json_path) = &args.json {
-            let json_file = fs::read_to_string(json_path);
-            let json_data = serde_json::from_str(&json_file.unwrap()).unwrap();
-            options.set_json(json_data);
-        }
+        let found = resolve_template_path(&config, "demo").unwrap();
+        assert_eq!(found, dir.join("templates/demo.toml"));
 
-        if args.git {
-            options.set_git(true);
-            // Only fall back to prompting for a project name when the template
-            // did not already define where the repository root lives.
-            if options.project_root.trim().is_empty() {
-                options.project_root = "{{$PROJECTNAME}}".to_string();
-            }
-        }
+        let err = resolve_template_path(&config, "missing").unwrap_err();
+        assert!(err.to_string().contains("not found"));
 
-        if args.no_liquid {
-            options.use_liquid = Some(false);
-        } else if args.liquid {
-            options.use_liquid = Some(true);
-        }
-
-        parsed_template.set_options(options);
-
-        let mut context = Context::from(keywords);
-        if args.strict {
-            context = context.on_missing(MissingPolicy::Error);
-        }
-        parsed_template.extract_with_context(&context).unwrap();
-    } else {
-        eprintln!(
-            "{} {}",
-            "No args specified, please use".yellow(),
-            "--help".bold().green()
-        );
+        let _ = fs::remove_dir_all(&dir);
     }
 }
