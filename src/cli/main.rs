@@ -73,7 +73,7 @@ fn run_init() -> spark::Result<()> {
         Error::Custom("cannot derive a template name from the current directory".into())
     })?;
     let dest = format!("{name}.toml");
-    println!("{}: {}", "Creating Template".bold().green(), dest.yellow());
+    eprintln!("{}: {}", "Creating Template".bold().green(), dest.yellow());
     Template::generate(&dest).map_err(Error::Custom)
 }
 
@@ -114,7 +114,7 @@ fn run_template(
         .map_err(|e| Error::Custom(format!("{}: {}", template_path.display(), e)))?;
 
     if !args.quiet {
-        println!(
+        eprintln!(
             "\n{}: {}",
             "Using Template".blue(),
             template_path.display().to_string().magenta()

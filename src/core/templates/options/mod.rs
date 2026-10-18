@@ -37,7 +37,7 @@ impl Options {
                 return;
             }
 
-            println!(
+            eprintln!(
                 "\nInitializing git repository for {}\n",
                 self.project_root.blue()
             );
