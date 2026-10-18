@@ -86,6 +86,26 @@ impl OutputTarget {
     ///
     /// For [`OutputTarget::File`] the path is shell-expanded and parent
     /// directories are created.
+    /// For file targets, the shell-expanded destination path.
+    pub fn expanded_path(&self) -> Option<PathBuf> {
+        match self {
+            Self::File(path) => {
+                let path_str = path.to_string_lossy();
+                Some(PathBuf::from(
+                    shellexpand::full(&path_str)
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|_| path_str.to_string()),
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if this is a file target whose destination already exists.
+    pub fn exists(&self) -> bool {
+        self.expanded_path().is_some_and(|p| p.exists())
+    }
+
     pub fn write(&self, content: &str) -> std::io::Result<()> {
         match self {
             Self::Stdout => {
@@ -370,5 +390,21 @@ mod tests {
         if let Err(e) = result {
             assert_eq!(e.kind(), std::io::ErrorKind::Other);
         }
+    }
+
+    #[test]
+    fn exists_reports_file_targets_only() {
+        let dir = std::env::temp_dir().join("spark_test_output_target_exists");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("present.txt");
+        std::fs::write(&file, "x").unwrap();
+
+        assert!(OutputTarget::File(file).exists());
+        assert!(!OutputTarget::File(dir.join("absent.txt")).exists());
+        assert!(!OutputTarget::Stdout.exists());
+        assert!(!OutputTarget::Clipboard.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -44,6 +44,10 @@ pub struct Cli {
     /// Fail when a placeholder has no value instead of writing an empty string
     #[arg(long, requires = "template")]
     pub strict: bool,
+
+    /// Overwrite existing files without asking
+    #[arg(short = 'f', long, requires = "template")]
+    pub force: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -78,6 +82,7 @@ mod tests {
             "--git",
             "--no-liquid",
             "--strict",
+            "--force",
             "-q",
             "--from",
             "name=spark,author=me",
@@ -92,6 +97,7 @@ mod tests {
         assert!(cli.git);
         assert!(cli.no_liquid);
         assert!(cli.strict);
+        assert!(cli.force);
         assert!(cli.quiet);
         assert_eq!(cli.keywords.as_deref(), Some("name=spark,author=me"));
         assert_eq!(cli.json.as_deref().unwrap().to_str(), Some("data.json"));
