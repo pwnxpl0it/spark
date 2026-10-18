@@ -11,19 +11,50 @@ env:
   RUSTFLAGS: "-Dwarnings"
 
 jobs:
-  test:
-    name: Build and test
+  lint:
+    name: Format and lint
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            pkg-config \
-            libwayland-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libwayland-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy (default features)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: clippy (no clipboard)
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
+
+  test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libwayland-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -34,5 +65,9 @@ jobs:
       - name: Build
         run: cargo build --verbose
 
-      - name: Run unit tests
+      - name: Run tests
         run: cargo test --verbose
+
+      - name: Build without clipboard
+        if: runner.os == 'Linux'
+        run: cargo build --verbose --no-default-features

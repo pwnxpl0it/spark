@@ -158,11 +158,13 @@ impl Template {
 
                 // Escape any placeholder-looking text so the generated
                 // template reproduces the captured files verbatim.
+                // Template paths always use '/' so a template generated on
+                // Windows renders on any platform.
                 let relative = file
                     .strip_prefix(&prefix)
                     .unwrap_or(&file)
-                    .trim_start_matches('/')
-                    .to_string();
+                    .trim_start_matches(['/', '\\'])
+                    .replace('\\', "/");
                 Some(File::new(
                     Keywords::escape(&relative),
                     Keywords::escape(&content),
