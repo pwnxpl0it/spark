@@ -24,6 +24,7 @@ Spark is a powerful and flexible project initializer designed to simplify your w
 - [Why Spark? 🧠](#why-spark-)
 - [Installation](#installation)
 - [Using Spark as a Library 📦](#using-spark-as-a-library-)
+- [Listing Templates 📋](#listing-templates-)
 - [Creating Templates 📜](#creating-templates-)
 - [Dynamic Placeholders and Functions](#dynamic-placeholders-and-functions)
 - [Supply/Override Values from CLI (`--from`) 🏗️](#supplyoverride-values-from-cli---from-️)
@@ -293,6 +294,14 @@ cargo doc --open
 ```
 
 ---
+
+## Listing Templates 📋
+
+```sh
+spark list
+```
+
+Prints every `*.toml` in the templates directory next to your config file, with its `[info]` description when present.
 
 ## Creating Templates 📜
 
