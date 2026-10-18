@@ -341,6 +341,30 @@ impl Template {
     ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
         let (rendered, keywords) = self.render_inner(context)?;
 
+        if !context.force {
+            let existing: Vec<String> = rendered
+                .iter()
+                .filter(|f| OutputTarget::from_path(&f.path).exists())
+                .map(|f| f.path.clone())
+                .collect();
+
+            if !existing.is_empty() {
+                if !context.interactive {
+                    return Err(crate::Error::FileExists(existing));
+                }
+                eprintln!(
+                    "\n{}: the following file(s) already exist:\n  {}",
+                    "warning".yellow().bold(),
+                    existing.join("\n  ")
+                );
+                let overwrite: bool = promptly::prompt_default("Overwrite them?", false)
+                    .map_err(|e| crate::Error::Prompt(e.to_string()))?;
+                if !overwrite {
+                    return Err(crate::Error::FileExists(existing));
+                }
+            }
+        }
+
         for file in &rendered {
             OutputTarget::from_path(&file.path)
                 .write(&file.content)
@@ -1329,6 +1353,54 @@ Status: {{{{$.status[0]}}}}
         assert!(generated.contains("hello {{$$WORLD}}"), "{generated}");
         let parsed: Template = generated.parse().unwrap();
         assert_eq!(parsed.files.unwrap()[0].path, "tpl.txt");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn extract_refuses_to_overwrite_without_force() {
+        let dir = std::env::temp_dir().join("spark_test_overwrite_guard");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("README.md");
+        fs::write(&target, "precious").unwrap();
+
+        let template = Template::builder().with_file(File::create(
+            target.to_string_lossy().to_string(),
+            "clobbered",
+        ));
+
+        let ctx = Context::new().non_interactive();
+        let err = template.extract_with_context(&ctx).unwrap_err();
+        assert!(matches!(err, Error::FileExists(ref files) if files.len() == 1));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "precious");
+
+        let ctx = Context::new().non_interactive().force(true);
+        template.extract_with_context(&ctx).unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "clobbered");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn extract_checks_all_files_before_writing_any() {
+        let dir = std::env::temp_dir().join("spark_test_overwrite_atomic");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let fresh = dir.join("fresh.txt");
+        let existing = dir.join("existing.txt");
+        fs::write(&existing, "keep").unwrap();
+
+        let template = Template::builder()
+            .with_file(File::create(fresh.to_string_lossy().to_string(), "new"))
+            .with_file(File::create(existing.to_string_lossy().to_string(), "x"));
+
+        let ctx = Context::new().non_interactive();
+        assert!(template.extract_with_context(&ctx).is_err());
+        assert!(
+            !fresh.exists(),
+            "no file should be written when the run is refused"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

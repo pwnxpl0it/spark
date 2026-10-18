@@ -58,6 +58,10 @@ pub enum Error {
         message: String,
     },
 
+    /// One or more destination files already exist and overwriting was not allowed.
+    #[error("refusing to overwrite existing file(s): {} (use --force or Context::force to allow)", .0.join(", "))]
+    FileExists(Vec<String>),
+
     /// Specified template path does not exist or is invalid.
     #[error("Invalid template path: {0:?}")]
     InvalidPath(PathBuf),
