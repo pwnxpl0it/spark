@@ -58,6 +58,10 @@ pub enum Error {
         message: String,
     },
 
+    /// A destination path contains `..` and escaping the working directory was not allowed.
+    #[error("refusing to write outside the working directory: '{0}' contains '..' (use --allow-outside or Context::allow_outside to allow)")]
+    UnsafePath(String),
+
     /// One or more destination files already exist and overwriting was not allowed.
     #[error("refusing to overwrite existing file(s): {} (use --force or Context::force to allow)", .0.join(", "))]
     FileExists(Vec<String>),

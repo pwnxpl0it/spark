@@ -23,6 +23,7 @@ pub struct Context {
     pub(crate) interactive: bool,
     pub(crate) on_missing: MissingPolicy,
     pub(crate) force: bool,
+    pub(crate) allow_outside: bool,
 }
 
 impl Default for Context {
@@ -40,6 +41,7 @@ impl Context {
             interactive: true,
             on_missing: MissingPolicy::default(),
             force: false,
+            allow_outside: false,
         }
     }
 
@@ -52,6 +54,7 @@ impl Context {
             interactive: true,
             on_missing: MissingPolicy::default(),
             force: false,
+            allow_outside: false,
         }
     }
 
@@ -197,6 +200,19 @@ impl Context {
         self.force
     }
 
+    /// Allows destination paths that contain `..` components. When `false`
+    /// (default), `extract_with_context` returns [`crate::Error::UnsafePath`]
+    /// for such paths before writing anything.
+    pub fn allow_outside(mut self, allow: bool) -> Self {
+        self.allow_outside = allow;
+        self
+    }
+
+    /// Returns whether `..` path components are permitted in destinations.
+    pub fn is_allow_outside(&self) -> bool {
+        self.allow_outside
+    }
+
     /// Checks if interactive prompts are enabled.
     pub fn is_interactive(&self) -> bool {
         self.interactive
@@ -235,6 +251,7 @@ impl From<HashMap<String, String>> for Context {
             interactive: true,
             on_missing: MissingPolicy::default(),
             force: false,
+            allow_outside: false,
         }
     }
 }
