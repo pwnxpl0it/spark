@@ -32,6 +32,15 @@ pub enum Error {
     #[error("JSON filter error: {0}")]
     JsonFilter(String),
 
+    /// A placeholder used a function name that Spark does not know.
+    #[error("Unknown function '{function}' in placeholder '{placeholder}' (supported: read)")]
+    InvalidFunction {
+        /// The full placeholder token, e.g. `{{$NAME:upper}}`.
+        placeholder: String,
+        /// The unknown function name, e.g. `upper`.
+        function: String,
+    },
+
     /// Required variable or project name was missing in non-interactive mode.
     #[error("Missing required variable '{0}'")]
     MissingVariable(String),

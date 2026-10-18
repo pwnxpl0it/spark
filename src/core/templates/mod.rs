@@ -128,9 +128,7 @@ impl Template {
             .unwrap_or_default()
             .into_iter()
             // Never capture the template file we are about to write.
-            .filter(|file| {
-                dest_abs.is_none() || fs::canonicalize(file).ok() != dest_abs
-            })
+            .filter(|file| dest_abs.is_none() || fs::canonicalize(file).ok() != dest_abs)
             .filter_map(|file| {
                 let content = match fs::read_to_string(&file) {
                     Ok(c) => c,
@@ -141,10 +139,7 @@ impl Template {
                     return None;
                 }
 
-                Some(File::new(
-                    file.replace("./", ""),
-                    content,
-                ))
+                Some(File::new(file.replace("./", ""), content))
             })
             .collect();
 
@@ -1267,11 +1262,8 @@ Status: {{{{$.status[0]}}}}
 
     #[test]
     fn show_info_tolerates_partial_info() {
-        let template = Template::builder().with_info(Information::new(
-            Some("only-name".into()),
-            None,
-            None,
-        ));
+        let template =
+            Template::builder().with_info(Information::new(Some("only-name".into()), None, None));
         // Must not panic.
         Template::show_info(&template);
         let summary = template.info_summary().unwrap();

@@ -69,7 +69,10 @@ mod tests {
         let after = std::env::current_dir().unwrap();
 
         assert_eq!(before, after, "git::init must not chdir");
-        assert!(dir.join(".git").is_dir(), "repository should be initialized");
+        assert!(
+            dir.join(".git").is_dir(),
+            "repository should be initialized"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
