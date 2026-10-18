@@ -145,8 +145,8 @@ mod tests {
 
     #[test]
     fn get_keywords_reads_keywords_section() {
-        let dir = std::env::temp_dir().join("spark_test_config_keywords");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         fs::create_dir_all(&dir).unwrap();
 
         let config_path = dir.join("config.toml");
@@ -171,14 +171,12 @@ GITHUB = "https://github.com/pwnxpl0it"
             keywords.get("{{$GITHUB}}").map(String::as_str),
             Some("https://github.com/pwnxpl0it")
         );
-
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn get_keywords_does_not_create_missing_config() {
-        let dir = std::env::temp_dir().join("spark_test_config_no_side_effect");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         let config_path = dir.join("config.toml");
 
         let cfg = Config::new(&config_path.to_string_lossy());
@@ -193,14 +191,12 @@ GITHUB = "https://github.com/pwnxpl0it"
 
         cfg.ensure_default_exists(true);
         assert!(config_path.exists(), "default path should be scaffolded");
-
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn get_keywords_returns_empty_when_section_missing() {
-        let dir = std::env::temp_dir().join("spark_test_config_empty");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         fs::create_dir_all(&dir).unwrap();
 
         let config_path = dir.join("config.toml");
@@ -209,14 +205,12 @@ GITHUB = "https://github.com/pwnxpl0it"
         let cfg = Config::new(&config_path.to_string_lossy());
         let keywords = cfg.get_keywords();
         assert!(keywords.is_empty());
-
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn init_creates_config_file() {
-        let dir = std::env::temp_dir().join("spark_test_config_init");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         fs::create_dir_all(&dir).unwrap();
 
         let config_path = dir.join("config.toml");
@@ -230,7 +224,5 @@ GITHUB = "https://github.com/pwnxpl0it"
         let new_tpl = fs::read_to_string(dir.join("templates/new.toml")).unwrap();
         assert!(new_tpl.contains("{{$PROJECTNAME}}.toml"), "{new_tpl}");
         assert!(!new_tpl.contains("$$"), "{new_tpl}");
-
-        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -1458,6 +1458,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shellexpand",
+ "tempfile",
  "thiserror 2.0.21",
  "toml",
 ]

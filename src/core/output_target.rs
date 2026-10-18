@@ -302,8 +302,8 @@ mod tests {
 
     #[test]
     fn file_write_creates_file_with_content() {
-        let dir = std::env::temp_dir().join("spark_test_output_target_file");
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         std::fs::create_dir_all(&dir).unwrap();
 
         let file_path = dir.join("out.txt");
@@ -312,14 +312,12 @@ mod tests {
 
         let content = std::fs::read_to_string(&file_path).unwrap();
         assert_eq!(content, "hello spark");
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn file_write_keeps_content_verbatim() {
-        let dir = std::env::temp_dir().join("spark_test_output_target_pjname");
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         std::fs::create_dir_all(&dir).unwrap();
 
         let file_path = dir.join("tpl.toml");
@@ -328,8 +326,6 @@ mod tests {
 
         let content = std::fs::read_to_string(&file_path).unwrap();
         assert_eq!(content, "path = initPJNAME {{$X}}");
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ── from_path + write round-trips ────────────────────────────────────────
@@ -350,8 +346,8 @@ mod tests {
 
     #[test]
     fn from_path_file_scheme_writes_to_disk() {
-        let dir = std::env::temp_dir().join("spark_test_output_target_file_scheme");
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         std::fs::create_dir_all(&dir).unwrap();
 
         let file_path = dir.join("result.txt");
@@ -361,8 +357,6 @@ mod tests {
         target.write("via file://").unwrap();
         let content = std::fs::read_to_string(&file_path).unwrap();
         assert_eq!(content, "via file://");
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ── clipboard:// ─────────────────────────────────────────────────────────
@@ -408,8 +402,8 @@ mod tests {
 
     #[test]
     fn exists_reports_file_targets_only() {
-        let dir = std::env::temp_dir().join("spark_test_output_target_exists");
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("present.txt");
         std::fs::write(&file, "x").unwrap();
@@ -418,8 +412,6 @@ mod tests {
         assert!(!OutputTarget::File(dir.join("absent.txt")).exists());
         assert!(!OutputTarget::Stdout.exists());
         assert!(!OutputTarget::Clipboard.exists());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

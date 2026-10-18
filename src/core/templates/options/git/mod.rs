@@ -60,8 +60,8 @@ mod tests {
 
     #[test]
     fn init_does_not_change_process_cwd() {
-        let dir = std::env::temp_dir().join("spark_test_git_init_cwd");
-        let _ = std::fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         std::fs::create_dir_all(&dir).unwrap();
 
         let before = std::env::current_dir().unwrap();
@@ -73,8 +73,6 @@ mod tests {
             dir.join(".git").is_dir(),
             "repository should be initialized"
         );
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
