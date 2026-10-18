@@ -132,10 +132,12 @@ pub struct Template {
 }
 
 /// Dynamic function modifiers for template keywords (e.g. `:read`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fns {
-    /// Prompts the user interactively on `stdin` for input.
-    Read,
+    /// Prompts the user interactively on `stdin` for input. The optional
+    /// label (`{{$NAME:read("Project name")}}`) replaces the variable name
+    /// in the prompt.
+    Read(Option<String>),
     /// Plain variable without function evaluation.
     None,
 }
