@@ -28,7 +28,7 @@ fn run() -> spark::Result<()> {
     let mut keywords = Keywords::init();
     keywords.extend(config.get_keywords());
 
-    if let Some(pairs) = args.keywords.as_deref() {
+    for pairs in &args.keywords {
         parse_from_pairs(pairs, &mut keywords)?;
     }
 
@@ -43,27 +43,48 @@ fn run() -> spark::Result<()> {
     }
 }
 
-/// Parses `--from "k=v, k2=v2"` into the keyword map.
+/// Parses one `--from "k=v, k2=v2"` argument into the keyword map.
+///
+/// Entries are split on commas. A segment that contains no `=` is treated as
+/// a continuation of the previous value, so `tags=a,b` yields `tags = "a,b"`.
 fn parse_from_pairs(pairs: &str, keywords: &mut HashMap<String, String>) -> spark::Result<()> {
-    for pair in pairs.split(',') {
-        let pair = pair.trim();
-        if pair.is_empty() {
-            continue;
+    let mut current: Option<(String, String)> = None;
+
+    for segment in pairs.split(',') {
+        match segment.split_once('=') {
+            Some((key, value)) => {
+                if let Some((k, v)) = current.take() {
+                    keywords.insert(Keywords::from(&k, None), v);
+                }
+                let key = key.trim();
+                if key.is_empty() {
+                    return Err(Error::Custom(format!(
+                        "invalid --from entry '{}': empty key",
+                        segment.trim()
+                    )));
+                }
+                current = Some((key.to_string(), value.trim().to_string()));
+            }
+            None => match current.as_mut() {
+                Some((_, v)) => {
+                    v.push(',');
+                    v.push_str(segment.trim());
+                }
+                None => {
+                    if segment.trim().is_empty() {
+                        continue;
+                    }
+                    return Err(Error::Custom(format!(
+                        "invalid --from entry '{}': expected KEY=VALUE",
+                        segment.trim()
+                    )));
+                }
+            },
         }
-        let (keyword, value) = pair.split_once('=').ok_or_else(|| {
-            Error::Custom(format!(
-                "invalid --from entry '{}': expected KEY=VALUE",
-                pair
-            ))
-        })?;
-        let keyword = keyword.trim();
-        if keyword.is_empty() {
-            return Err(Error::Custom(format!(
-                "invalid --from entry '{}': empty key",
-                pair
-            )));
-        }
-        keywords.insert(Keywords::from(keyword, None), value.trim().to_string());
+    }
+
+    if let Some((k, v)) = current {
+        keywords.insert(Keywords::from(&k, None), v);
     }
     Ok(())
 }
@@ -246,6 +267,18 @@ mod tests {
         assert_eq!(k.get("{{$PROJECTNAME}}").map(String::as_str), Some("myapp"));
         assert_eq!(k.get("{{$author}}").map(String::as_str), Some("alice"));
         assert_eq!(k.get("{{$version}}").map(String::as_str), Some("1.0"));
+    }
+
+    #[test]
+    fn from_pairs_keep_commas_inside_values() {
+        let mut k = HashMap::new();
+        parse_from_pairs("tags=a, b,c, name=x", &mut k).unwrap();
+        assert_eq!(k.get("{{$tags}}").map(String::as_str), Some("a,b,c"));
+        assert_eq!(k.get("{{$name}}").map(String::as_str), Some("x"));
+
+        let mut k = HashMap::new();
+        parse_from_pairs("list=1,2,3", &mut k).unwrap();
+        assert_eq!(k.get("{{$list}}").map(String::as_str), Some("1,2,3"));
     }
 
     #[test]
