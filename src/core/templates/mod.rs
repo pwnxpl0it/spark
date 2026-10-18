@@ -43,6 +43,16 @@ impl RenderedFile {
     }
 }
 
+impl std::str::FromStr for Template {
+    type Err = crate::Error;
+
+    /// Parses a template from a TOML string, so `toml_str.parse::<Template>()` works.
+    fn from_str(toml_str: &str) -> crate::Result<Self> {
+        let template: Self = toml::from_str(toml_str)?;
+        Ok(template)
+    }
+}
+
 impl Template {
     /// Parses a template from a TOML string.
     ///
@@ -57,9 +67,9 @@ impl Template {
     /// "#;
     /// let template = Template::from_str(toml).unwrap();
     /// ```
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(toml_str: &str) -> crate::Result<Self> {
-        let template: Self = toml::from_str(toml_str)?;
-        Ok(template)
+        <Self as std::str::FromStr>::from_str(toml_str)
     }
 
     /// Reads and parses a template from a TOML file path.
@@ -1210,7 +1220,7 @@ Status: {{{{$.status[0]}}}}
         fs::write(temp_bin_file, &bin_data).unwrap();
 
         // Create an invalid UTF-8 binary file
-        fs::write(temp_invalid_utf8, &[0xFF, 0xFE, 0xFD]).unwrap();
+        fs::write(temp_invalid_utf8, [0xFF, 0xFE, 0xFD]).unwrap();
 
         // Create a valid text file
         fs::write(temp_txt_file, "valid text content").unwrap();
@@ -1261,5 +1271,12 @@ Status: {{{{$.status[0]}}}}
         assert!(Template::builder().info_summary().is_none());
         let empty = Template::builder().with_info(Information::new(None, None, None));
         assert!(empty.info_summary().is_none());
+    }
+
+    #[test]
+    fn template_parse_via_fromstr() {
+        let template: Template = "[[files]]\npath='a'\ncontent='b'".parse().unwrap();
+        assert_eq!(template.files.unwrap()[0].path, "a");
+        assert!("[[files".parse::<Template>().is_err());
     }
 }

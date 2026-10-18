@@ -101,10 +101,8 @@ impl OutputTarget {
                 handle.flush()
             }
             Self::Clipboard => {
-                let mut clipboard = arboard::Clipboard::new().map_err(|e| io::Error::other(e))?;
-                clipboard
-                    .set_text(content)
-                    .map_err(|e| io::Error::other(e))?;
+                let mut clipboard = arboard::Clipboard::new().map_err(io::Error::other)?;
+                clipboard.set_text(content).map_err(io::Error::other)?;
                 println!("{}", "copied to clipboard".blue());
                 Ok(())
             }
