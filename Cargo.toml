@@ -30,5 +30,11 @@ serde_json = "1.0.117"
 shellexpand = "3.1.0"
 toml = "0.8"
 ignore = "0.4"
-arboard = { version = "3.4", features = ["wayland-data-control"] }
+arboard = { version = "3.4", features = ["wayland-data-control"], optional = true }
 thiserror = "2"
+
+[features]
+default = ["clipboard"]
+# `clipboard://` output target. Disable with `--no-default-features` to build
+# without X11/Wayland libraries; the target then returns an error at write time.
+clipboard = ["dep:arboard"]

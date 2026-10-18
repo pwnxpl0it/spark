@@ -129,12 +129,17 @@ impl OutputTarget {
                 handle.write_all(content.as_bytes())?;
                 handle.flush()
             }
+            #[cfg(feature = "clipboard")]
             Self::Clipboard => {
                 let mut clipboard = arboard::Clipboard::new().map_err(io::Error::other)?;
                 clipboard.set_text(content).map_err(io::Error::other)?;
                 eprintln!("{}", "copied to clipboard".blue());
                 Ok(())
             }
+            #[cfg(not(feature = "clipboard"))]
+            Self::Clipboard => Err(io::Error::other(
+                "clipboard support was not compiled in (build with the `clipboard` feature)",
+            )),
             Self::File(path) => {
                 let path_str = path.to_string_lossy();
                 let expanded = match shellexpand::full(&path_str) {
