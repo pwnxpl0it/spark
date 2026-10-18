@@ -1002,10 +1002,12 @@ GITHUB = "https://github.com/pwnxpl0it"
 ```sh
 cargo build
 cargo test
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
 cargo run -- [TEMPLATE] [OPTIONS]
 ```
 
-Unit tests cover keywords, functions, utils, templates (including JSON paths and Liquid ordering), options, config, CLI args, and the `--from` flag (pre-populating keywords to skip interactive prompts).
+CI runs fmt and clippy, then builds and tests on Linux, Windows, and macOS. Unit tests cover keywords, functions, utils, templates (including JSON paths, Liquid ordering, escaping, and the overwrite and path guards), options, config, and the CLI.
 
 ## 👾 Neovim plugin (spark.nvim) 
 I wrote a neovim plugin that makes it a way easier, Check it out [spark.nvim](https://www.github.com/pwnxpl0it/spark.nvim).
