@@ -584,8 +584,8 @@ mod tests {
 
     #[test]
     fn extract_resolves_json_then_replaces_then_applies_liquid() {
-        let out_dir = std::env::temp_dir().join("spark_test_json_then_liquid");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
 
         let out_file = out_dir.join("out.txt");
         let mut template = Template {
@@ -608,17 +608,15 @@ mod tests {
 
         let content = fs::read_to_string(&out_file).unwrap();
         assert_eq!(content, "SPARK-1 SPARK-2 SPARK-3 ");
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     #[test]
     fn output_target_file_write_creates_parent_directories() {
         // Directory creation moved from prepare_file_content into
         // OutputTarget::File::write – verify the end-to-end behaviour.
-        let sub_dir = std::env::temp_dir().join("spark_test_prepare_dirs");
+        let sub_dir_tmp = tempfile::tempdir().unwrap();
+        let sub_dir = sub_dir_tmp.path().to_path_buf();
         let file_path = sub_dir.join("nested").join("test.txt");
-        let _ = fs::remove_dir_all(&sub_dir);
 
         let keywords = HashMap::new();
         let options = Options {
@@ -639,8 +637,6 @@ mod tests {
         OutputTarget::from_path(&path).write(&content).unwrap();
         assert!(file_path.parent().unwrap().is_dir());
         assert!(file_path.is_file());
-
-        let _ = fs::remove_dir_all(&sub_dir);
     }
 
     #[test]
@@ -661,8 +657,8 @@ mod tests {
 
     #[test]
     fn extract_writes_files_with_keyword_replacement() {
-        let out_dir = std::env::temp_dir().join("spark_test_extract");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
         fs::create_dir_all(&out_dir).unwrap();
         let out_file = out_dir.join("hello.txt");
 
@@ -687,16 +683,14 @@ mod tests {
 
         let written = fs::read_to_string(&out_file).unwrap();
         assert_eq!(written, "Hello spark");
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     #[test]
     fn extract_resolves_path_placeholders_before_replacement() {
         // Regression: after PROJECTNAME was set from the first file, later files used to
         // skip find_and_exec and replace/write paths before resolving JSON (or :read).
-        let out_dir = std::env::temp_dir().join("spark_test_resolve_before_replace");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
 
         let first_path = format!("{}/{{{{$PROJECTNAME}}}}/first.txt", out_dir.display());
         let second_path = format!(
@@ -740,8 +734,6 @@ mod tests {
             "wrote unresolved path placeholder: {:?}",
             unresolved
         );
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     /// Realistic embedded TOML template used by JSON integration tests.
@@ -795,8 +787,8 @@ owner = {{{{$.user.name}}}}
 
     #[test]
     fn extract_from_embedded_template_with_json_data() {
-        let out_dir = std::env::temp_dir().join("spark_test_embedded_json_template");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
 
         let toml_str = embedded_json_template_toml(&out_dir.to_string_lossy());
         let mut template: Template =
@@ -825,14 +817,12 @@ owner = {{{{$.user.name}}}}
         let profile_content = fs::read_to_string(&profile).unwrap();
         assert!(profile_content.contains("package demo_app"));
         assert!(profile_content.contains("owner = John Doe"));
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     #[test]
     fn extract_reads_json_from_file_like_cli() {
-        let out_dir = std::env::temp_dir().join("spark_test_json_file");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
         fs::create_dir_all(&out_dir).unwrap();
 
         let json_path = out_dir.join("data.json");
@@ -868,8 +858,6 @@ owner = {{{{$.user.name}}}}
 
         let src_file = out_dir.join("from_file").join("src").join("99.txt");
         assert!(src_file.is_file());
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     #[test]
@@ -935,8 +923,8 @@ content = "hello"
     /// 3. No unresolved `{{$PROJECTNAME}}` literal appears in any written path.
     #[test]
     fn extract_with_from_flag_skips_projectname_prompt() {
-        let out_dir = std::env::temp_dir().join("spark_test_from_flag_projectname");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
 
         let file_path = format!("{}/{{{{$PROJECTNAME}}}}/README.md", out_dir.display());
 
@@ -977,14 +965,12 @@ content = "hello"
             "unresolved placeholder path must not exist: {:?}",
             unresolved
         );
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     #[test]
     fn extract_uses_json_data_embedded_in_template_options() {
-        let out_dir = std::env::temp_dir().join("spark_test_toml_embedded_json");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
 
         let toml_str = format!(
             r#"
@@ -1024,8 +1010,6 @@ Status: {{{{$.status[0]}}}}
         let hello = out_dir.join("matrix").join("hello.txt");
         let content = fs::read_to_string(&hello).unwrap();
         assert_eq!(content, "Hello Trinity (7)\nStatus: embedded\n");
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     // ── OutputTarget integration via extract() ───────────────────────────────
@@ -1090,8 +1074,8 @@ Status: {{{{$.status[0]}}}}
     /// filesystem path that follows.
     #[test]
     fn extract_file_scheme_writes_to_disk() {
-        let out_dir = std::env::temp_dir().join("spark_test_extract_file_scheme");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
         fs::create_dir_all(&out_dir).unwrap();
 
         let file_path = out_dir.join("result.txt");
@@ -1116,8 +1100,6 @@ Status: {{{{$.status[0]}}}}
             fs::read_to_string(&file_path).unwrap(),
             "content via file://"
         );
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     /// Keywords are replaced before dispatching to stdout://.
@@ -1173,8 +1155,8 @@ Status: {{{{$.status[0]}}}}
     /// correctly: the filesystem file is written, stdout/stderr are not.
     #[test]
     fn extract_mixed_targets_file_and_stdout() {
-        let out_dir = std::env::temp_dir().join("spark_test_mixed_targets");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
         fs::create_dir_all(&out_dir).unwrap();
 
         let file_path = out_dir.join("notes.txt");
@@ -1210,14 +1192,12 @@ Status: {{{{$.status[0]}}}}
         // No spurious files for the protocol paths.
         assert!(!std::path::Path::new("stdout:").exists());
         assert!(!std::path::Path::new("stderr:").exists());
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     #[test]
     fn extract_does_not_form_synthetic_placeholder_across_content_and_path() {
-        let out_dir = std::env::temp_dir().join("spark_test_no_synthetic_placeholder");
-        let _ = fs::remove_dir_all(&out_dir);
+        let out_dir_tmp = tempfile::tempdir().unwrap();
+        let out_dir = out_dir_tmp.path().to_path_buf();
         fs::create_dir_all(&out_dir).unwrap();
 
         let out_file = out_dir.join("file.txt");
@@ -1246,40 +1226,33 @@ Status: {{{{$.status[0]}}}}
                     .keys()
                     .any(|k| k.starts_with("{{$") && k.ends_with("}}"))
         );
-
-        let _ = fs::remove_dir_all(&out_dir);
     }
 
     #[test]
     fn generate_filters_binary_file_with_nul_after_1024_bytes() {
-        let temp_bin_file = Path::new("./spark_test_nul_after_1024.bin");
-        let temp_invalid_utf8 = Path::new("./spark_test_invalid_utf8.dat");
-        let temp_txt_file = Path::new("./spark_test_valid_text.txt");
-        let dest_file = Path::new("./spark_test_generated_template.toml");
-
-        let cleanup = || {
-            let _ = fs::remove_file(temp_bin_file);
-            let _ = fs::remove_file(temp_invalid_utf8);
-            let _ = fs::remove_file(temp_txt_file);
-            let _ = fs::remove_file(dest_file);
-        };
-        cleanup();
+        let src_tmp = tempfile::tempdir().unwrap();
+        let src = src_tmp.path();
+        let temp_bin_file = src.join("spark_test_nul_after_1024.bin");
+        let temp_invalid_utf8 = src.join("spark_test_invalid_utf8.dat");
+        let temp_txt_file = src.join("spark_test_valid_text.txt");
+        let dest_tmp = tempfile::tempdir().unwrap();
+        let dest_file = dest_tmp.path().join("spark_test_generated_template.toml");
 
         // Create a binary file with NUL byte past 1024 bytes
         let mut bin_data = vec![b'a'; 1500];
         bin_data[1200] = 0;
-        fs::write(temp_bin_file, &bin_data).unwrap();
+        fs::write(&temp_bin_file, &bin_data).unwrap();
 
         // Create an invalid UTF-8 binary file
-        fs::write(temp_invalid_utf8, [0xFF, 0xFE, 0xFD]).unwrap();
+        fs::write(&temp_invalid_utf8, [0xFF, 0xFE, 0xFD]).unwrap();
 
         // Create a valid text file
-        fs::write(temp_txt_file, "valid text content").unwrap();
+        fs::write(&temp_txt_file, "valid text content").unwrap();
 
-        let res = Template::generate(dest_file.to_str().unwrap());
+        let res = Template::generate_from(src, dest_file.to_str().unwrap());
         assert!(res.is_ok());
 
-        let generated_content = fs::read_to_string(dest_file).unwrap();
+        let generated_content = fs::read_to_string(&dest_file).unwrap();
         let parsed: Template = toml::from_str(&generated_content).unwrap();
         let files = parsed.files.unwrap_or_default();
 
@@ -1301,8 +1274,6 @@ Status: {{{{$.status[0]}}}}
                 .any(|f| f.path.contains("spark_test_valid_text.txt")),
             "Valid text file should be included in generated template"
         );
-
-        cleanup();
     }
 
     #[test]
@@ -1350,8 +1321,8 @@ Status: {{{{$.status[0]}}}}
 
     #[test]
     fn generate_escapes_placeholders_in_captured_files() {
-        let dir = std::env::temp_dir().join("spark_test_generate_escape");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("tpl.txt"), "hello {{$WORLD}}").unwrap();
 
@@ -1362,14 +1333,12 @@ Status: {{{{$.status[0]}}}}
         assert!(generated.contains("hello {{$$WORLD}}"), "{generated}");
         let parsed: Template = generated.parse().unwrap();
         assert_eq!(parsed.files.unwrap()[0].path, "tpl.txt");
-
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn extract_refuses_to_overwrite_without_force() {
-        let dir = std::env::temp_dir().join("spark_test_overwrite_guard");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         fs::create_dir_all(&dir).unwrap();
         let target = dir.join("README.md");
         fs::write(&target, "precious").unwrap();
@@ -1387,14 +1356,12 @@ Status: {{{{$.status[0]}}}}
         let ctx = Context::new().non_interactive().force(true);
         template.extract_with_context(&ctx).unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "clobbered");
-
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn extract_checks_all_files_before_writing_any() {
-        let dir = std::env::temp_dir().join("spark_test_overwrite_atomic");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         fs::create_dir_all(&dir).unwrap();
         let fresh = dir.join("fresh.txt");
         let existing = dir.join("existing.txt");
@@ -1410,14 +1377,12 @@ Status: {{{{$.status[0]}}}}
             !fresh.exists(),
             "no file should be written when the run is refused"
         );
-
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn extract_rejects_parent_dir_paths_unless_allowed() {
-        let dir = std::env::temp_dir().join("spark_test_traversal_guard");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         fs::create_dir_all(dir.join("inner")).unwrap();
         let path = format!("{}/inner/../escaped.txt", dir.display());
 
@@ -1433,7 +1398,5 @@ Status: {{{{$.status[0]}}}}
             .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap();
         assert!(dir.join("escaped.txt").exists());
-
-        let _ = fs::remove_dir_all(&dir);
     }
 }

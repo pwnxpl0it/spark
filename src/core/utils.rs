@@ -45,21 +45,19 @@ mod tests {
 
     #[test]
     fn write_content_writes_verbatim() {
-        let file_path = std::env::temp_dir().join("spark_test_write_content.txt");
-        let _ = fs::remove_file(&file_path);
+        let file_path_tmp = tempfile::tempdir().unwrap();
+        let file_path = file_path_tmp.path().join("spark_test_write_content.txt");
 
         write_content(&file_path, "Hello initPJNAME!").expect("write_content should succeed");
 
         let read = fs::read_to_string(&file_path).expect("should read written file");
         assert_eq!(read, "Hello initPJNAME!");
-
-        let _ = fs::remove_file(&file_path);
     }
 
     #[test]
     fn list_files_returns_all_nested_files() {
-        let test_dir = std::env::temp_dir().join("spark_test_list_files");
-        let _ = fs::remove_dir_all(&test_dir);
+        let test_dir_tmp = tempfile::tempdir().unwrap();
+        let test_dir = test_dir_tmp.path().to_path_buf();
         fs::create_dir_all(test_dir.join("sub")).unwrap();
 
         let file1 = test_dir.join("file1.txt");
@@ -74,14 +72,12 @@ mod tests {
         assert!(files.iter().any(|f| f == &file1.to_string_lossy()));
         assert!(files.iter().any(|f| f == &file2.to_string_lossy()));
         assert!(files.iter().any(|f| f == &file3.to_string_lossy()));
-
-        let _ = fs::remove_dir_all(&test_dir);
     }
 
     #[test]
     fn list_files_includes_dotfiles_and_skips_git_dir_and_ignored() {
-        let test_dir = std::env::temp_dir().join("spark_test_list_files_filter");
-        let _ = fs::remove_dir_all(&test_dir);
+        let test_dir_tmp = tempfile::tempdir().unwrap();
+        let test_dir = test_dir_tmp.path().to_path_buf();
         fs::create_dir_all(test_dir.join(".git/objects")).unwrap();
         fs::create_dir_all(test_dir.join(".github/workflows")).unwrap();
         fs::create_dir_all(test_dir.join("target")).unwrap();
@@ -107,18 +103,17 @@ mod tests {
         assert!(names.contains(&".github/workflows/ci.yml".to_string()));
         assert!(!names.iter().any(|n| n.starts_with(".git/")), "{names:?}");
         assert!(!names.iter().any(|n| n.starts_with("target/")), "{names:?}");
-
-        let _ = fs::remove_dir_all(&test_dir);
     }
 
     #[test]
     fn list_files_errors_when_path_is_not_directory() {
-        let file_path = std::env::temp_dir().join("spark_test_list_files_not_dir.txt");
+        let file_path_tmp = tempfile::tempdir().unwrap();
+        let file_path = file_path_tmp
+            .path()
+            .join("spark_test_list_files_not_dir.txt");
         fs::write(&file_path, "x").unwrap();
 
         let err = list_files(&file_path).expect_err("should fail for non-directory");
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
-
-        let _ = fs::remove_file(&file_path);
     }
 }
