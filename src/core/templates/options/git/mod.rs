@@ -31,13 +31,13 @@ pub fn init(project_root: &str) {
     }
 
     if root.join(".git").exists() {
-        println!("{}", "\n✅ Git is already initialized.".yellow().bold());
+        eprintln!("{}", "\n✅ Git is already initialized.".yellow().bold());
         return;
     }
 
     match Command::new("git").arg("init").current_dir(root).status() {
         Ok(status) if status.success() => {
-            println!("{}", "\n✅ Git initialized successfully.".green().bold());
+            eprintln!("{}", "\n✅ Git initialized successfully.".green().bold());
         }
         _ => {
             eprintln!(

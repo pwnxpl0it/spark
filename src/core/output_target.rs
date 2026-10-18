@@ -103,7 +103,7 @@ impl OutputTarget {
             Self::Clipboard => {
                 let mut clipboard = arboard::Clipboard::new().map_err(io::Error::other)?;
                 clipboard.set_text(content).map_err(io::Error::other)?;
-                println!("{}", "copied to clipboard".blue());
+                eprintln!("{}", "copied to clipboard".blue());
                 Ok(())
             }
             Self::File(path) => {
@@ -123,7 +123,7 @@ impl OutputTarget {
                     }
                 }
                 std::fs::write(std::path::Path::new(&expanded), content).map(|_| {
-                    println!("{}: {}", "file written".blue(), expanded.bold().green());
+                    eprintln!("{}: {}", "file written".blue(), expanded.bold().green());
                 })
             }
         }
