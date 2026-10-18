@@ -553,6 +553,16 @@ content = "✅ Generated {{$PROJECTNAME}}"
 > string after all placeholder replacements.
 
 
+## Dry run 🔍
+
+See what a template would produce without touching the filesystem, the clipboard, or git:
+
+```sh
+spark template --dry-run      # or -n
+```
+
+Each file is printed as a `==> path` header followed by its rendered content.
+
 ## Existing files 🛡️
 
 Spark checks every destination before writing anything. If a file already exists it asks before overwriting, and refuses in non-interactive use. Pass `--force` / `-f` to overwrite without asking:

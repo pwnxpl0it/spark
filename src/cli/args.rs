@@ -52,6 +52,10 @@ pub struct Cli {
     /// Allow destination paths containing '..' (writing outside the working directory)
     #[arg(long, requires = "template")]
     pub allow_outside: bool,
+
+    /// Render the template and print the result without writing any files
+    #[arg(short = 'n', long, requires = "template")]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -90,6 +94,7 @@ mod tests {
             "--strict",
             "--force",
             "--allow-outside",
+            "--dry-run",
             "-q",
             "--from",
             "name=spark,author=me",
@@ -106,6 +111,7 @@ mod tests {
         assert!(cli.strict);
         assert!(cli.force);
         assert!(cli.allow_outside);
+        assert!(cli.dry_run);
         assert!(cli.quiet);
         assert_eq!(cli.keywords.as_deref(), Some("name=spark,author=me"));
         assert_eq!(cli.json.as_deref().unwrap().to_str(), Some("data.json"));
