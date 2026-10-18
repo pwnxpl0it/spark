@@ -2,12 +2,26 @@ use crate::error::Result;
 use crate::Keywords;
 use std::collections::HashMap;
 
+/// What to do with a plain `{{$NAME}}` placeholder that has no value after
+/// keywords, JSON data, and prompts have all been consulted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MissingPolicy {
+    /// Replace the placeholder with an empty string and print a warning (default).
+    #[default]
+    Empty,
+    /// Leave the `{{$NAME}}` text in the output untouched.
+    Keep,
+    /// Abort rendering with [`crate::Error::MissingVariable`].
+    Error,
+}
+
 /// Execution context for resolving placeholders, JSON paths, and managing interactivity.
 #[derive(Debug, Clone)]
 pub struct Context {
     pub(crate) keywords: HashMap<String, String>,
     pub(crate) json_data: Option<serde_json::Value>,
     pub(crate) interactive: bool,
+    pub(crate) on_missing: MissingPolicy,
 }
 
 impl Default for Context {
@@ -23,6 +37,7 @@ impl Context {
             keywords: HashMap::new(),
             json_data: None,
             interactive: true,
+            on_missing: MissingPolicy::default(),
         }
     }
 
@@ -33,6 +48,7 @@ impl Context {
             keywords: Keywords::init(),
             json_data: None,
             interactive: true,
+            on_missing: MissingPolicy::default(),
         }
     }
 
@@ -141,6 +157,30 @@ impl Context {
         self
     }
 
+    /// Sets the policy for placeholders that cannot be resolved.
+    ///
+    /// ```rust
+    /// use spark::{Context, MissingPolicy, Template, Error};
+    ///
+    /// let template = Template::from_str("[[files]]\npath='a'\ncontent='{{$NOPE}}'").unwrap();
+    /// let ctx = Context::new().non_interactive().on_missing(MissingPolicy::Error);
+    /// assert!(matches!(template.render(&ctx), Err(Error::MissingVariable(v)) if v == "NOPE"));
+    /// ```
+    pub fn on_missing(mut self, policy: MissingPolicy) -> Self {
+        self.on_missing = policy;
+        self
+    }
+
+    /// Alias for `on_missing(MissingPolicy::Error)`.
+    pub fn strict(self) -> Self {
+        self.on_missing(MissingPolicy::Error)
+    }
+
+    /// Returns the current policy for unresolved placeholders.
+    pub fn missing_policy(&self) -> MissingPolicy {
+        self.on_missing
+    }
+
     /// Checks if interactive prompts are enabled.
     pub fn is_interactive(&self) -> bool {
         self.interactive
@@ -177,6 +217,7 @@ impl From<HashMap<String, String>> for Context {
             keywords,
             json_data: None,
             interactive: true,
+            on_missing: MissingPolicy::default(),
         }
     }
 }

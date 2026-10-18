@@ -56,6 +56,13 @@ impl Cli {
                 .takes_value(true)
                 .requires("template")
             )
+            .arg(
+                Arg::new("strict")
+                    .help("Fail when a placeholder has no value instead of writing an empty string")
+                    .long("strict")
+                    .takes_value(false)
+                    .requires("template"),
+            )
             .subcommand(Command::new("init").about("Creates a template for the current directory"))
     }
 
@@ -84,6 +91,7 @@ mod tests {
                 "demo",
                 "--git",
                 "--no-liquid",
+                "--strict",
                 "-q",
                 "--from",
                 "name=spark,author=me",
@@ -97,6 +105,7 @@ mod tests {
         assert_eq!(matches.value_of("template"), Some("demo"));
         assert!(matches.is_present("git"));
         assert!(matches.is_present("no-liquid"));
+        assert!(matches.is_present("strict"));
         assert!(matches.is_present("quiet"));
         assert_eq!(matches.value_of("keywords"), Some("name=spark,author=me"));
         assert_eq!(matches.value_of("json"), Some("data.json"));
