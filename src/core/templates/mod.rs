@@ -3,7 +3,6 @@ use crate::utils::*;
 use crate::*;
 use colored::Colorize;
 use promptly::prompt;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::Path};
 pub mod options;
@@ -242,7 +241,7 @@ impl Template {
         &self,
         context: &Context,
     ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
-        let re = Regex::new(KEYWORDS_REGEX)?;
+        let re = Keywords::regex();
         let options = self.options.clone().unwrap_or_default();
         let json_data = context
             .json_data
@@ -260,7 +259,7 @@ impl Template {
             Fns::find_and_resolve(
                 &format!("{}\n{}", file.content, file.path),
                 &mut keywords,
-                &re,
+                re,
                 &json_data,
                 context.interactive,
             )?;
