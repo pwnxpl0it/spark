@@ -6,7 +6,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             json_data: None,
-            use_liquid: Some(true),
+            use_liquid: Some(false),
             git: false,
             project_root: String::new(),
         }
@@ -55,7 +55,7 @@ mod tests {
     fn default_options() {
         let options = Options::default();
         assert!(!options.git);
-        assert_eq!(options.use_liquid, Some(true));
+        assert_eq!(options.use_liquid, Some(false));
         assert_eq!(options.json_data, None);
         assert!(options.project_root.is_empty());
     }
@@ -66,7 +66,7 @@ mod tests {
             .with_options(Options::default())
             .with_file(crate::File::create("a.txt", "b"));
         let encoded = toml::to_string(&template).expect("default options must serialize");
-        assert!(encoded.contains("use_liquid = true"));
+        assert!(encoded.contains("use_liquid = false"));
         assert!(!encoded.contains("json_data"));
     }
 

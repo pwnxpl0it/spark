@@ -88,7 +88,9 @@ fn main() {
         }
 
         if args.is_present("no-liquid") {
-            options.use_liquid = None;
+            options.use_liquid = Some(false);
+        } else if args.is_present("liquid") {
+            options.use_liquid = Some(true);
         }
 
         parsed_template.set_options(options);
