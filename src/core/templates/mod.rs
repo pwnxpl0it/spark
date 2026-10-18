@@ -280,6 +280,7 @@ impl Template {
                 re,
                 &json_data,
                 context.interactive,
+                context.on_missing,
             )?;
 
             if project.is_empty() {

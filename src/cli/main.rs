@@ -1,7 +1,7 @@
 use crate::config::*;
 use colored::*;
 use dotenv::dotenv;
-use spark::{Keywords, Template};
+use spark::{Context, Keywords, MissingPolicy, Template};
 use std::fs;
 mod args;
 mod config;
@@ -92,7 +92,12 @@ fn main() {
         }
 
         parsed_template.set_options(options);
-        parsed_template.extract(&mut keywords).unwrap();
+
+        let mut context = Context::from(keywords);
+        if args.is_present("strict") {
+            context = context.on_missing(MissingPolicy::Error);
+        }
+        parsed_template.extract_with_context(&context).unwrap();
     } else {
         eprintln!(
             "{} {}",

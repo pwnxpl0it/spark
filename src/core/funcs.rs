@@ -1,3 +1,4 @@
+use crate::context::MissingPolicy;
 use crate::Fns;
 use crate::Keywords;
 use colored::*;
@@ -85,7 +86,9 @@ impl Fns {
         re: &Regex,
         json_data: &serde_json::Value,
     ) {
-        if let Err(e) = Self::find_and_resolve(txt, keywords, re, json_data, true) {
+        if let Err(e) =
+            Self::find_and_resolve(txt, keywords, re, json_data, true, MissingPolicy::Empty)
+        {
             eprintln!("\n{}: {}", "error".red(), e);
         }
     }
@@ -96,6 +99,7 @@ impl Fns {
         re: &Regex,
         json_data: &serde_json::Value,
         interactive: bool,
+        on_missing: MissingPolicy,
     ) -> Result<(), crate::Error> {
         let found = Self::find(txt, keywords, re)?;
         {
@@ -131,15 +135,23 @@ impl Fns {
                         keywords.insert(keyword.clone(), value.clone());
                         keywords.insert(final_keyword, value);
                     }
-                    Self::None => {
-                        eprintln!(
-                            "\n[{}] {}: {}",
-                            "WRN".yellow(),
-                            "Value not found".yellow(),
-                            keyword.green()
-                        );
-                        keywords.insert(keyword, String::new());
-                    }
+                    Self::None => match on_missing {
+                        MissingPolicy::Error => {
+                            return Err(crate::Error::MissingVariable(keyword_name));
+                        }
+                        MissingPolicy::Keep => {
+                            keywords.insert(keyword.clone(), keyword);
+                        }
+                        MissingPolicy::Empty => {
+                            eprintln!(
+                                "\n[{}] {}: {}",
+                                "WRN".yellow(),
+                                "Value not found".yellow(),
+                                keyword.green()
+                            );
+                            keywords.insert(keyword, String::new());
+                        }
+                    },
                 }
             }
         }
@@ -286,9 +298,42 @@ mod tests {
             &re,
             &serde_json::Value::Null,
             false,
+            MissingPolicy::Empty,
         )
         .unwrap_err();
         assert!(matches!(err, crate::Error::InvalidFunction { .. }));
+    }
+
+    fn resolve_missing(policy: MissingPolicy) -> crate::Result<HashMap<String, String>> {
+        let re = keyword_re();
+        let mut keywords = HashMap::new();
+        Fns::find_and_resolve(
+            "{{$NOPE}}",
+            &mut keywords,
+            &re,
+            &serde_json::Value::Null,
+            false,
+            policy,
+        )?;
+        Ok(keywords)
+    }
+
+    #[test]
+    fn missing_policy_empty_inserts_empty_string() {
+        let k = resolve_missing(MissingPolicy::Empty).unwrap();
+        assert_eq!(k.get("{{$NOPE}}").map(String::as_str), Some(""));
+    }
+
+    #[test]
+    fn missing_policy_keep_preserves_token() {
+        let k = resolve_missing(MissingPolicy::Keep).unwrap();
+        assert_eq!(k.get("{{$NOPE}}").map(String::as_str), Some("{{$NOPE}}"));
+    }
+
+    #[test]
+    fn missing_policy_error_fails() {
+        let err = resolve_missing(MissingPolicy::Error).unwrap_err();
+        assert!(matches!(err, crate::Error::MissingVariable(v) if v == "NOPE"));
     }
 
     #[test]

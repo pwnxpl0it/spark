@@ -80,7 +80,7 @@ pub mod output_target;
 pub mod templates;
 mod utils;
 
-pub use context::Context;
+pub use context::{Context, MissingPolicy};
 pub use error::{Error, Result};
 pub use output_target::OutputTarget;
 use serde::{Deserialize, Serialize};
