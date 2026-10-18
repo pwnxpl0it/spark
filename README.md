@@ -246,6 +246,8 @@ template.extract_with_context(&ctx)?;
 
 On headless systems (CI, SSH without a display) the clipboard write fails with `Error::OutputWrite` rather than panicking.
 
+Clipboard support is a default cargo feature. Build with `--no-default-features` to skip the X11/Wayland dependencies entirely; `clipboard://` then returns an error at write time instead of copying.
+
 ### Supply JSON data programmatically
 
 ```rust
