@@ -341,6 +341,15 @@ impl Template {
     ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
         let (rendered, keywords) = self.render_inner(context)?;
 
+        if !context.allow_outside {
+            if let Some(unsafe_file) = rendered
+                .iter()
+                .find(|f| OutputTarget::from_path(&f.path).escapes_cwd())
+            {
+                return Err(crate::Error::UnsafePath(unsafe_file.path.clone()));
+            }
+        }
+
         if !context.force {
             let existing: Vec<String> = rendered
                 .iter()
@@ -1401,6 +1410,29 @@ Status: {{{{$.status[0]}}}}
             !fresh.exists(),
             "no file should be written when the run is refused"
         );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn extract_rejects_parent_dir_paths_unless_allowed() {
+        let dir = std::env::temp_dir().join("spark_test_traversal_guard");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("inner")).unwrap();
+        let path = format!("{}/inner/../escaped.txt", dir.display());
+
+        let template = Template::builder().with_file(File::create(path, "x"));
+
+        let err = template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap_err();
+        assert!(matches!(err, Error::UnsafePath(_)));
+        assert!(!dir.join("escaped.txt").exists());
+
+        template
+            .extract_with_context(&Context::new().non_interactive().allow_outside(true))
+            .unwrap();
+        assert!(dir.join("escaped.txt").exists());
 
         let _ = fs::remove_dir_all(&dir);
     }

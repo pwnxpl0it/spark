@@ -554,6 +554,8 @@ spark template --force
 
 Library callers use `Context::force(true)`; otherwise `extract_with_context` returns `Error::FileExists`.
 
+Destination paths containing `..` are rejected before anything is written, so a shared template cannot quietly reach outside the working directory. Absolute paths and `~` are still allowed because they are explicit in the template. Pass `--allow-outside` (or `Context::allow_outside(true)`) to permit `..`.
+
 ## Git Integration 🐙
 
 Initialize a Git repository during project creation:
