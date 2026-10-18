@@ -213,6 +213,15 @@ fn run_template(
         return Ok(());
     }
 
+    // Template and JSON paths are already resolved, so it is safe to move into
+    // the output directory now; relative [[files]] paths land there.
+    if let Some(out) = &args.output_dir {
+        fs::create_dir_all(out)
+            .map_err(|e| Error::Custom(format!("cannot create '{}': {}", out.display(), e)))?;
+        std::env::set_current_dir(out)
+            .map_err(|e| Error::Custom(format!("cannot enter '{}': {}", out.display(), e)))?;
+    }
+
     parsed_template.extract_with_context(&context)?;
     Ok(())
 }
