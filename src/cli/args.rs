@@ -43,8 +43,16 @@ impl Cli {
                     .requires("template"),
             )
             .arg(
+                Arg::new("liquid")
+                    .help("Enable Liquid rendering regardless of template options")
+                    .long("liquid")
+                    .takes_value(false)
+                    .conflicts_with("no-liquid")
+                    .requires("template"),
+            )
+            .arg(
                 Arg::new("no-liquid")
-                    .help("Disable Liquid support")
+                    .help("Disable Liquid rendering regardless of template options")
                     .long("no-liquid")
                     .takes_value(false)
                     .requires("template"),
@@ -202,5 +210,15 @@ mod tests {
             keywords.get("{{$version}}").map(String::as_str),
             Some("1.0")
         );
+    }
+
+    #[test]
+    fn liquid_and_no_liquid_conflict() {
+        let result = Cli::app().try_get_matches_from(["spark", "demo", "--liquid", "--no-liquid"]);
+        assert!(result.is_err());
+        let matches = Cli::app()
+            .try_get_matches_from(["spark", "demo", "--liquid"])
+            .unwrap();
+        assert!(matches.is_present("liquid"));
     }
 }
