@@ -3,6 +3,9 @@ use colored::Colorize;
 use std::{collections::HashMap, fs, path::Path};
 use toml::Value;
 
+/// Where Spark looks for its config when `--config` is not given.
+pub const DEFAULT_CONFIG_PATH: &str = "~/.config/spark/config.toml";
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub path: String,
@@ -71,6 +74,35 @@ content = '''
         Template::extract(&mut template, &mut keywords).unwrap();
     }
 
+    /// Returns `true` if the config file exists on disk.
+    pub fn exists(&self) -> bool {
+        Path::new(&self.path).is_file()
+    }
+
+    /// Creates the config file and starter templates if the config file is
+    /// missing. Only intended for the default config location; an explicit
+    /// `--config` path that does not exist is reported, not created.
+    pub fn ensure_default_exists(&self, is_default_path: bool) {
+        if self.exists() {
+            return;
+        }
+        if is_default_path {
+            eprintln!(
+                "\n[{}] Creating config files and templates for first-time setup...",
+                "INFO".bold().blue()
+            );
+            self.clone().init();
+        } else {
+            eprintln!(
+                "[{}] config file '{}' not found; continuing without config keywords",
+                "WRN".bold().yellow(),
+                self.path
+            );
+        }
+    }
+
+    /// Reads the `[Keywords]` table from the config file. Never writes to disk;
+    /// a missing or unparsable file yields an empty map.
     pub fn get_keywords(&self) -> HashMap<String, String> {
         let mut keywords = HashMap::new();
 
@@ -83,12 +115,6 @@ content = '''
                     }
                 }
             }
-        } else {
-            eprintln!(
-                "\n[{}] Creating config files and templates for first-time setup...",
-                "INFO".bold().blue()
-            );
-            self.clone().init();
         }
 
         keywords
@@ -145,6 +171,28 @@ GITHUB = "https://github.com/pwnxpl0it"
             keywords.get("{{$GITHUB}}").map(String::as_str),
             Some("https://github.com/pwnxpl0it")
         );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn get_keywords_does_not_create_missing_config() {
+        let dir = std::env::temp_dir().join("spark_test_config_no_side_effect");
+        let _ = fs::remove_dir_all(&dir);
+        let config_path = dir.join("config.toml");
+
+        let cfg = Config::new(&config_path.to_string_lossy());
+        assert!(cfg.get_keywords().is_empty());
+        assert!(!config_path.exists(), "get_keywords must not scaffold");
+
+        cfg.ensure_default_exists(false);
+        assert!(
+            !config_path.exists(),
+            "explicit missing path must not scaffold"
+        );
+
+        cfg.ensure_default_exists(true);
+        assert!(config_path.exists(), "default path should be scaffolded");
 
         let _ = fs::remove_dir_all(&dir);
     }

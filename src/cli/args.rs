@@ -16,7 +16,7 @@ pub struct Cli {
     pub quiet: bool,
 
     /// Config path
-    #[arg(short = 'c', long, default_value = "~/.config/spark/config.toml")]
+    #[arg(short = 'c', long, default_value = crate::config::DEFAULT_CONFIG_PATH)]
     pub config: String,
 
     /// Read key,value pairs from a JSON file
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn default_config_path() {
         let cli = Cli::try_parse_from(["spark", "demo"]).unwrap();
-        assert_eq!(cli.config, "~/.config/spark/config.toml");
+        assert_eq!(cli.config, crate::config::DEFAULT_CONFIG_PATH);
     }
 
     #[test]
