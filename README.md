@@ -346,6 +346,10 @@ Use `{{$PLACEHOLDER}}` for dynamic content replacement. Common placeholders incl
 
 
 
+### Escaping a placeholder
+
+To emit a literal `{{$NAME}}` in the output, double the dollar sign: `{{$$NAME}}` is never resolved and is written out as `{{$NAME}}`. `spark init` applies this escape automatically to any captured file that already contains placeholder-like text.
+
 ## Dynamic Placeholders and Functions
 
 Enhance templates with functions for additional customization. Functions follow the format `{{$PLACEHOLDER:FUNCTION}}`.

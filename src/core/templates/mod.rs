@@ -131,9 +131,17 @@ impl Template {
         self.options.clone()
     }
 
+    /// Generates a template at `dest` from every file under the current directory.
     pub fn generate(dest: &str) -> std::result::Result<(), String> {
+        Self::generate_from(Path::new("./"), dest)
+    }
+
+    /// Generates a template at `dest` from every file under `source`.
+    /// Paths in the template are relative to `source`.
+    pub fn generate_from(source: &Path, dest: &str) -> std::result::Result<(), String> {
         let dest_abs = fs::canonicalize(dest).ok();
-        let files: Vec<File> = list_files(Path::new("./"))
+        let prefix = source.to_string_lossy().to_string();
+        let files: Vec<File> = list_files(source)
             .unwrap_or_default()
             .into_iter()
             // Never capture the template file we are about to write.
@@ -148,7 +156,17 @@ impl Template {
                     return None;
                 }
 
-                Some(File::new(file.replace("./", ""), content))
+                // Escape any placeholder-looking text so the generated
+                // template reproduces the captured files verbatim.
+                let relative = file
+                    .strip_prefix(&prefix)
+                    .unwrap_or(&file)
+                    .trim_start_matches('/')
+                    .to_string();
+                Some(File::new(
+                    Keywords::escape(&relative),
+                    Keywords::escape(&content),
+                ))
             })
             .collect();
 
@@ -231,7 +249,7 @@ impl Template {
             output
         };
 
-        Ok((path, final_output))
+        Ok((Keywords::unescape(&path), Keywords::unescape(&final_output)))
     }
 
     /// Inner rendering pipeline. Returns rendered files **and** the fully-resolved
@@ -1277,5 +1295,39 @@ Status: {{{{$.status[0]}}}}
         let template: Template = "[[files]]\npath='a'\ncontent='b'".parse().unwrap();
         assert_eq!(template.files.unwrap()[0].path, "a");
         assert!("[[files".parse::<Template>().is_err());
+    }
+
+    #[test]
+    fn render_emits_literal_placeholder_for_escaped_token() {
+        let template = Template::builder()
+            .with_options(Options {
+                use_liquid: Some(false),
+                ..Options::default()
+            })
+            .with_file(File::create(
+                "{{$$DIR}}/x.txt",
+                "keep {{$$NAME:read}} but replace {{$NAME}}",
+            ));
+        let ctx = Context::new().with_var("NAME", "v").non_interactive();
+        let rendered = template.render(&ctx).unwrap();
+        assert_eq!(rendered[0].path, "{{$DIR}}/x.txt");
+        assert_eq!(rendered[0].content, "keep {{$NAME:read}} but replace v");
+    }
+
+    #[test]
+    fn generate_escapes_placeholders_in_captured_files() {
+        let dir = std::env::temp_dir().join("spark_test_generate_escape");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("tpl.txt"), "hello {{$WORLD}}").unwrap();
+
+        let dest = dir.join("out.toml");
+        Template::generate_from(&dir, &dest.to_string_lossy()).unwrap();
+
+        let generated = fs::read_to_string(&dest).unwrap();
+        assert!(generated.contains("hello {{$$WORLD}}"), "{generated}");
+        assert!(generated.contains("path = 'tpl.txt'"), "{generated}");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

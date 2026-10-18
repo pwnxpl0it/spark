@@ -57,12 +57,36 @@ impl Keywords {
         RE.get_or_init(|| Regex::new(crate::templates::KEYWORDS_REGEX).expect("valid regex"))
     }
 
+    /// Prefix of an escaped placeholder. `{{$$NAME}}` renders as the literal
+    /// text `{{$NAME}}` and is never resolved or substituted.
+    pub const ESCAPE_PREFIX: &'static str = "{{$$";
+
+    /// Returns `true` if `token` is an escaped placeholder (`{{$$...}}`).
+    pub fn is_escaped(token: &str) -> bool {
+        token.starts_with(Self::ESCAPE_PREFIX)
+    }
+
+    /// Turns every `{{$` in `data` into `{{$$` so the text survives rendering
+    /// unchanged. Used by `spark init` when capturing existing files.
+    pub fn escape(data: &str) -> String {
+        data.replace("{{$", Self::ESCAPE_PREFIX)
+    }
+
+    /// Turns every `{{$$` back into `{{$`. Run once, after all substitution.
+    pub fn unescape(data: &str) -> String {
+        data.replace(Self::ESCAPE_PREFIX, "{{$")
+    }
+
     /// Replaces every `{{$...}}` token in `data` with its value from `keywords`
-    /// in a single pass. Tokens without a value are left untouched.
+    /// in a single pass. Tokens without a value and escaped tokens are left
+    /// untouched.
     pub fn replace_keywords(keywords: &HashMap<String, String>, data: &str) -> String {
         Self::regex()
             .replace_all(data, |caps: &regex::Captures| {
                 let token = &caps[0];
+                if Self::is_escaped(token) {
+                    return token.to_string();
+                }
                 keywords
                     .get(token)
                     .cloned()
@@ -131,5 +155,15 @@ mod tests {
         map.insert("{{$A}}".to_string(), "{{$B}}".to_string());
         map.insert("{{$B}}".to_string(), "leaked".to_string());
         assert_eq!(Keywords::replace_keywords(&map, "{{$A}}"), "{{$B}}");
+    }
+
+    #[test]
+    fn escaped_tokens_are_not_replaced_and_unescape_restores_them() {
+        let mut map = HashMap::new();
+        map.insert("{{$NAME}}".to_string(), "spark".to_string());
+        let out = Keywords::replace_keywords(&map, "{{$NAME}} {{$$NAME}}");
+        assert_eq!(out, "spark {{$$NAME}}");
+        assert_eq!(Keywords::unescape(&out), "spark {{$NAME}}");
+        assert_eq!(Keywords::escape("a {{$X}} b"), "a {{$$X}} b");
     }
 }
