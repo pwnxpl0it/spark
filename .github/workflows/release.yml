@@ -37,7 +37,9 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             archive: tar.gz
-          - os: macos-13
+          # Intel macOS is cross-compiled on the Apple Silicon runner; GitHub no
+          # longer serves the macos-13 (Intel) label reliably.
+          - os: macos-latest
             target: x86_64-apple-darwin
             archive: tar.gz
 
@@ -64,6 +66,7 @@ jobs:
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Smoke test binary
+        # Cross-compiled Intel macOS binaries run under Rosetta on the arm64 runner.
         shell: bash
         run: |
           ./target/${{ matrix.target }}/release/${{ env.BIN_NAME }}${{ runner.os == 'Windows' && '.exe' || '' }} --version
