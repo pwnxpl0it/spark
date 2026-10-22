@@ -182,9 +182,9 @@ impl Template {
         write_content(dest, &toml_string)
             .map_err(|e| format!("Failed to write template to file: {}", e))?;
 
-        println!(
+        eprintln!(
             "{}: Template successfully generated at {}",
-            "Success".green().bold().blink(),
+            "Success".green().bold(),
             dest
         );
         Ok(())
@@ -412,7 +412,7 @@ impl Template {
 
     pub fn show_info(template: &Self) {
         if let Some(summary) = template.info_summary() {
-            println!("{}\n", summary);
+            eprintln!("{}\n", summary);
         }
     }
 }
