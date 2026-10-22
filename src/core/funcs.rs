@@ -24,7 +24,7 @@ impl Fns {
         txt: &str,
         keywords: &HashMap<String, String>,
         re: &Regex,
-    ) -> Option<IndexMap<String, (String, Self)>> {
+    ) -> crate::Result<IndexMap<String, (String, Self)>> {
         let mut found = IndexMap::new();
         for cap in re.captures_iter(txt) {
             if let Some(key_match) = cap.get(0) {
@@ -37,13 +37,11 @@ impl Fns {
                     if parts.len() == 2 {
                         let parsed_func = match parts[1].trim() {
                             "read" => Self::Read,
-                            _ => {
-                                eprintln!(
-                                    "\n{}: '{}' is not a valid function",
-                                    "error".red(),
-                                    parts[1].yellow()
-                                );
-                                return None;
+                            other => {
+                                return Err(crate::Error::InvalidFunction {
+                                    placeholder: keyword.clone(),
+                                    function: other.to_string(),
+                                });
                             }
                         };
 
@@ -66,7 +64,7 @@ impl Fns {
                 }
             }
         }
-        Some(found)
+        Ok(found)
     }
 
     pub fn exec(func: Self, keyword_name: &str) -> Result<String, String> {
@@ -82,7 +80,14 @@ impl Fns {
         re: &Regex,
         json_data: &serde_json::Value,
     ) {
-        if let Some(found) = Self::find(txt, keywords, re) {
+        let found = match Self::find(txt, keywords, re) {
+            Ok(found) => found,
+            Err(e) => {
+                eprintln!("\n{}: {}", "error".red(), e);
+                return;
+            }
+        };
+        {
             for (keyword_name, (keyword, function)) in found {
                 let final_keyword = Self::remove_fn_name(&keyword, function);
                 if keywords.contains_key(&final_keyword) {
@@ -136,7 +141,8 @@ impl Fns {
         json_data: &serde_json::Value,
         interactive: bool,
     ) -> Result<(), crate::Error> {
-        if let Some(found) = Self::find(txt, keywords, re) {
+        let found = Self::find(txt, keywords, re)?;
+        {
             for (keyword_name, (keyword, function)) in found {
                 let final_keyword = Self::remove_fn_name(&keyword, function);
                 if keywords.contains_key(&final_keyword) {
@@ -294,21 +300,39 @@ mod tests {
     }
 
     #[test]
-    fn find_returns_none_for_invalid_function() {
+    fn find_errors_for_invalid_function() {
         let re = keyword_re();
         let keywords = HashMap::new();
 
-        let found = Fns::find("Bad {{$NAME:upper}}", &keywords, &re);
-        assert!(found.is_none());
+        let err = Fns::find("Bad {{$NAME:upper}}", &keywords, &re).unwrap_err();
+        assert!(matches!(
+            err,
+            crate::Error::InvalidFunction { ref function, .. } if function == "upper"
+        ));
     }
 
     #[test]
-    fn find_returns_none_for_read_followed_by_invalid_function() {
+    fn find_errors_for_read_followed_by_invalid_function() {
         let re = keyword_re();
         let keywords = HashMap::new();
 
         let found = Fns::find("{{$NAME:read}} then {{$NAME:write}}", &keywords, &re);
-        assert!(found.is_none());
+        assert!(found.is_err());
+    }
+
+    #[test]
+    fn find_and_resolve_propagates_invalid_function() {
+        let re = keyword_re();
+        let mut keywords = HashMap::new();
+        let err = Fns::find_and_resolve(
+            "{{$A:upper}}",
+            &mut keywords,
+            &re,
+            &serde_json::Value::Null,
+            false,
+        )
+        .unwrap_err();
+        assert!(matches!(err, crate::Error::InvalidFunction { .. }));
     }
 
     #[test]
