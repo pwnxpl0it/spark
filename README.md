@@ -461,7 +461,7 @@ Template options in spark provide a way to customize the project setup by allowi
 |--------------- | --------------- | ---------------  |
 | git   | Initialize Git repository in the project directory   | `git=true` |
 | project_root    | Set the project name to a constant value or ask for user input  | `project_root="new_project"`, `project_root="{{$PROJECTNAME}}"` |
-| use_liquid    | Enable/Disable Liquid templating in the template (enabled by default)     | `use_liquid=true` |
+| use_liquid    | Enable/Disable Liquid templating in the template (disabled by default)     | `use_liquid=true` |
 | json_data    | Embed JSON in the template for `{{$.…}}` placeholders     | See [JSON Integration](#json-integration) |
 
 
@@ -881,7 +881,7 @@ Example! 5 ff.html
 ```
 
 > [!TIP]
-> Liquid is enabled by default. Disable with `use_liquid=false` in `[options]`, or `--no-liquid` on the CLI.
+> Liquid is **disabled by default**, because its `{{ }}` syntax collides with files such as GitHub Actions workflows, Jinja, Vue, or Handlebars templates. Enable it per template with `use_liquid=true` in `[options]`, or per run with `--liquid` on the CLI. `--no-liquid` forces it off.
 
 ---
 
