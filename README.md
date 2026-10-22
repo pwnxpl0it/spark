@@ -367,6 +367,7 @@ Enhance templates with functions for additional customization. Functions follow 
 | Function | Description                         | Example                |
 |----------|-------------------------------------|------------------------|
 | `read`   | Prompts for user input              | `{{$VAR:read}}`        |
+| `read("Label")` | Prompts with a custom label instead of the variable name | `{{$VAR:read("Project name")}}` |
 
 Example template snippet:
 

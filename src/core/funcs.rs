@@ -10,15 +10,43 @@ use std::collections::HashMap;
 impl std::fmt::Display for Fns {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Read => write!(f, "read"),
+            Self::Read(None) => write!(f, "read"),
+            Self::Read(Some(label)) => write!(f, "read(\"{}\")", label),
             Self::None => write!(f, ""),
         }
     }
 }
 
 impl Fns {
-    pub fn remove_fn_name(keyword: &str, func_name: Self) -> String {
-        keyword.replace(&format!(":{}", func_name), "")
+    /// Parses the text after the `:` in a placeholder into a function.
+    /// Accepts `read`, `read(Label)`, `read("Label")`, and `read('Label')`.
+    pub fn parse(spec: &str) -> Option<Self> {
+        let spec = spec.trim();
+        if spec == "read" {
+            return Some(Self::Read(None));
+        }
+        let inner = spec.strip_prefix("read(")?.strip_suffix(')')?.trim();
+        let label = inner
+            .strip_prefix('"')
+            .and_then(|l| l.strip_suffix('"'))
+            .or_else(|| inner.strip_prefix('\'').and_then(|l| l.strip_suffix('\'')))
+            .unwrap_or(inner)
+            .trim();
+        Some(Self::Read(if label.is_empty() {
+            None
+        } else {
+            Some(label.to_string())
+        }))
+    }
+
+    /// Strips the `:function` suffix from a placeholder, giving the plain
+    /// `{{$NAME}}` token.
+    pub fn remove_fn_name(keyword: &str, _func_name: &Self) -> String {
+        let stripped = Keywords::strip(keyword);
+        let name = stripped
+            .split_once(':')
+            .map_or(stripped.as_str(), |(n, _)| n);
+        Keywords::from(name.trim(), None)
     }
 
     pub fn find(
@@ -37,30 +65,24 @@ impl Fns {
                 // if lhs function is the same as rhs function then no need to override in the IndexMap
                 if !keywords.contains_key(&keyword) {
                     let stripped_keyword = Keywords::strip(&keyword);
-                    let parts: Vec<&str> = stripped_keyword.split(':').collect();
-                    if parts.len() == 2 {
-                        let parsed_func = match parts[1].trim() {
-                            "read" => Self::Read,
-                            other => {
-                                return Err(crate::Error::InvalidFunction {
-                                    placeholder: keyword.clone(),
-                                    function: other.to_string(),
-                                });
-                            }
-                        };
+                    if let Some((name, spec)) = stripped_keyword.split_once(':') {
+                        let name = name.trim();
+                        let parsed_func =
+                            Self::parse(spec).ok_or_else(|| crate::Error::InvalidFunction {
+                                placeholder: keyword.clone(),
+                                function: spec.trim().to_string(),
+                            })?;
 
-                        if let Some((_key, val)) = found.get(parts[0]) {
-                            match (val, parsed_func) {
-                                (&Fns::None, _) => {
-                                    found.insert(parts[0].to_string(), (keyword, parsed_func));
-                                }
-                                _ => continue,
+                        // A function form wins over a plain form of the same
+                        // name; the first function form seen is kept.
+                        match found.get(name) {
+                            Some((_, Fns::None)) | None => {
+                                found.insert(name.to_string(), (keyword, parsed_func));
                             }
-                        } else {
-                            found.insert(parts[0].to_string(), (keyword, parsed_func));
+                            _ => continue,
                         }
                     } else {
-                        if found.contains_key(parts[0]) {
+                        if found.contains_key(stripped_keyword.as_str()) {
                             continue;
                         }
                         found.insert(stripped_keyword.clone(), (keyword, Self::None));
@@ -73,7 +95,8 @@ impl Fns {
 
     pub fn exec(func: Self, keyword_name: &str) -> Result<String, String> {
         match func {
-            Self::Read => prompt(keyword_name).map_err(|_| "Failed to read input".to_string()),
+            Self::Read(label) => prompt(label.as_deref().unwrap_or(keyword_name))
+                .map_err(|_| "Failed to read input".to_string()),
             Self::None => Ok(keyword_name.to_string()),
         }
     }
@@ -104,7 +127,7 @@ impl Fns {
         let found = Self::find(txt, keywords, re)?;
         {
             for (keyword_name, (keyword, function)) in found {
-                let final_keyword = Self::remove_fn_name(&keyword, function);
+                let final_keyword = Self::remove_fn_name(&keyword, &function);
                 if keywords.contains_key(&final_keyword) {
                     keywords.insert(keyword, keywords[&final_keyword].clone());
                     continue;
@@ -126,11 +149,11 @@ impl Fns {
                 }
 
                 match function {
-                    Self::Read => {
+                    Self::Read(label) => {
                         if !interactive {
                             return Err(crate::Error::MissingVariable(keyword_name));
                         }
-                        let value: String = prompt(&keyword_name)
+                        let value: String = prompt(label.as_deref().unwrap_or(&keyword_name))
                             .map_err(|e| crate::Error::Prompt(e.to_string()))?;
                         keywords.insert(keyword.clone(), value.clone());
                         keywords.insert(final_keyword, value);
@@ -214,21 +237,49 @@ mod tests {
 
     #[test]
     fn remove_fn_name_strips_read_suffix() {
-        let result = Fns::remove_fn_name("{{$TEST:read}}", Fns::Read);
+        let result = Fns::remove_fn_name("{{$TEST:read}}", &Fns::Read(None));
         assert_eq!(result, "{{$TEST}}");
-    }
-
-    #[test]
-    fn remove_fn_name_with_none_leaves_colon_suffix() {
-        // Display for None is empty, so the replaced pattern is just ":"
-        let result = Fns::remove_fn_name("{{$TEST:read}}", Fns::None);
-        assert_eq!(result, "{{$TESTread}}");
+        let result = Fns::remove_fn_name(
+            "{{$TEST:read(\"Label: with colon\")}}",
+            &Fns::Read(Some("Label: with colon".into())),
+        );
+        assert_eq!(result, "{{$TEST}}");
+        assert_eq!(Fns::remove_fn_name("{{$PLAIN}}", &Fns::None), "{{$PLAIN}}");
     }
 
     #[test]
     fn display_formats_variants() {
-        assert_eq!(Fns::Read.to_string(), "read");
+        assert_eq!(Fns::Read(None).to_string(), "read");
+        assert_eq!(Fns::Read(Some("Name".into())).to_string(), "read(\"Name\")");
         assert_eq!(Fns::None.to_string(), "");
+    }
+
+    #[test]
+    fn parse_accepts_read_with_optional_label() {
+        assert_eq!(Fns::parse("read"), Some(Fns::Read(None)));
+        assert_eq!(Fns::parse(" read "), Some(Fns::Read(None)));
+        assert_eq!(Fns::parse("read()"), Some(Fns::Read(None)));
+        assert_eq!(
+            Fns::parse("read(\"Project name\")"),
+            Some(Fns::Read(Some("Project name".into())))
+        );
+        assert_eq!(Fns::parse("read('x')"), Some(Fns::Read(Some("x".into()))));
+        assert_eq!(
+            Fns::parse("read(bare)"),
+            Some(Fns::Read(Some("bare".into())))
+        );
+        assert_eq!(Fns::parse("upper"), None);
+        assert_eq!(Fns::parse("read(unclosed"), None);
+    }
+
+    #[test]
+    fn find_parses_labelled_read_with_colon_in_label() {
+        let re = keyword_re();
+        let keywords = HashMap::new();
+        let found = Fns::find("{{$NAME:read(\"Name: please\")}}", &keywords, &re).unwrap();
+        let (keyword, func) = found.get("NAME").unwrap();
+        assert_eq!(keyword, "{{$NAME:read(\"Name: please\")}}");
+        assert_eq!(func, &Fns::Read(Some("Name: please".into())));
     }
 
     #[test]
@@ -251,7 +302,7 @@ mod tests {
 
         let (keyword, func) = found.get("NAME").expect("NAME should be found");
         assert_eq!(keyword, "{{$NAME:read}}");
-        assert!(matches!(func, Fns::Read));
+        assert!(matches!(func, Fns::Read(None)));
     }
 
     #[test]
