@@ -163,7 +163,9 @@ fn resolve_template_path(config: &Config, template: &str) -> spark::Result<PathB
         return Ok(local);
     }
 
-    let in_config = Path::new(&config.templates_path).join(&name);
+    // Build with `/` rather than `Path::join` so the displayed path does not
+    // mix separators on Windows (config paths are already normalised).
+    let in_config = PathBuf::from(format!("{}/{}", config.templates_path, name));
     if in_config.is_file() {
         return Ok(in_config);
     }
