@@ -747,6 +747,9 @@ mod tests {
 
     /// Realistic embedded TOML template used by JSON integration tests.
     fn embedded_json_template_toml(out_dir: &str) -> String {
+        // The path is interpolated into a TOML basic string, where Windows
+        // backslashes would be read as escape sequences (`\U` in `C:\Users`).
+        let out_dir = out_dir.replace('\\', "/");
         format!(
             r#"
 [info]
@@ -1009,7 +1012,7 @@ Hello {{{{$.user.name}}}} ({{{{$.user.id}}}})
 Status: {{{{$.status[0]}}}}
 """
 "#,
-            out = out_dir.display()
+            out = out_dir.display().to_string().replace('\\', "/")
         );
 
         let mut template: Template = toml::from_str(&toml_str).unwrap();

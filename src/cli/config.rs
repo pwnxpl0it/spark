@@ -134,7 +134,12 @@ mod tests {
         let expected_templates = shellexpand::tilde("~/.config/spark/templates").to_string();
 
         assert_eq!(cfg.path, expected_path);
-        assert_eq!(cfg.templates_path, expected_templates);
+        // Compare as paths: on Windows the derived value uses `\` for the
+        // last component while the expanded literal keeps `/`.
+        assert_eq!(
+            Path::new(&cfg.templates_path),
+            Path::new(&expected_templates)
+        );
     }
 
     #[test]
