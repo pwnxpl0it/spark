@@ -123,10 +123,14 @@ impl Template {
     }
 
     pub fn generate(dest: &str) -> std::result::Result<(), String> {
+        let dest_abs = fs::canonicalize(dest).ok();
         let files: Vec<File> = list_files(Path::new("./"))
             .unwrap_or_default()
             .into_iter()
-            .filter(|file| !file.contains(".git"))
+            // Never capture the template file we are about to write.
+            .filter(|file| {
+                dest_abs.is_none() || fs::canonicalize(file).ok() != dest_abs
+            })
             .filter_map(|file| {
                 let content = match fs::read_to_string(&file) {
                     Ok(c) => c,

@@ -1,7 +1,6 @@
 use colored::*;
 use std::io;
 use std::{fs, path::Path};
-use walkdir::WalkDir;
 
 #[allow(dead_code)]
 pub fn create_dirs(dir: &str) {
@@ -42,9 +41,10 @@ pub fn write_content<P: AsRef<Path>>(path: P, content: &str) -> std::io::Result<
     })
 }
 
+/// Lists every regular file under `dir`, honouring `.gitignore` rules and
+/// skipping the `.git` directory itself. Hidden files such as `.gitignore`
+/// and `.github/` are included.
 pub fn list_files(dir: &Path) -> Result<Vec<String>, io::Error> {
-    let mut files = Vec::new();
-
     if !dir.is_dir() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -52,12 +52,20 @@ pub fn list_files(dir: &Path) -> Result<Vec<String>, io::Error> {
         ));
     }
 
-    for entry in WalkDir::new(dir)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|e| e.path().is_file())
-    {
-        files.push(entry.path().to_string_lossy().to_string());
+    let walker = ignore::WalkBuilder::new(dir)
+        .hidden(false)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .require_git(false)
+        .filter_entry(|entry| entry.file_name() != ".git")
+        .build();
+
+    let mut files = Vec::new();
+    for entry in walker.filter_map(Result::ok) {
+        if entry.file_type().is_some_and(|t| t.is_file()) {
+            files.push(entry.path().to_string_lossy().to_string());
+        }
     }
 
     Ok(files)
@@ -110,6 +118,39 @@ mod tests {
         assert!(files.iter().any(|f| f == &file1.to_string_lossy()));
         assert!(files.iter().any(|f| f == &file2.to_string_lossy()));
         assert!(files.iter().any(|f| f == &file3.to_string_lossy()));
+
+        let _ = fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
+    fn list_files_includes_dotfiles_and_skips_git_dir_and_ignored() {
+        let test_dir = std::env::temp_dir().join("spark_test_list_files_filter");
+        let _ = fs::remove_dir_all(&test_dir);
+        fs::create_dir_all(test_dir.join(".git/objects")).unwrap();
+        fs::create_dir_all(test_dir.join(".github/workflows")).unwrap();
+        fs::create_dir_all(test_dir.join("target")).unwrap();
+        fs::write(test_dir.join(".gitignore"), "target/\n").unwrap();
+        fs::write(test_dir.join(".git/HEAD"), "ref").unwrap();
+        fs::write(test_dir.join(".git/objects/x"), "blob").unwrap();
+        fs::write(test_dir.join(".github/workflows/ci.yml"), "on: push").unwrap();
+        fs::write(test_dir.join("target/blob"), "built").unwrap();
+        fs::write(test_dir.join("a.txt"), "a").unwrap();
+
+        let files = list_files(&test_dir).expect("list_files should succeed");
+        let names: Vec<String> = files
+            .iter()
+            .map(|f| {
+                f.trim_start_matches(&*test_dir.to_string_lossy())
+                    .trim_start_matches('/')
+                    .to_string()
+            })
+            .collect();
+
+        assert!(names.contains(&"a.txt".to_string()));
+        assert!(names.contains(&".gitignore".to_string()));
+        assert!(names.contains(&".github/workflows/ci.yml".to_string()));
+        assert!(!names.iter().any(|n| n.starts_with(".git/")), "{names:?}");
+        assert!(!names.iter().any(|n| n.starts_with("target/")), "{names:?}");
 
         let _ = fs::remove_dir_all(&test_dir);
     }
