@@ -56,6 +56,10 @@ pub struct Cli {
     /// Render the template and print the result without writing any files
     #[arg(short = 'n', long, requires = "template")]
     pub dry_run: bool,
+
+    /// Directory to generate into (created if missing); relative file paths are resolved from here
+    #[arg(short = 'o', long, requires = "template", value_name = "DIR")]
+    pub output_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -95,6 +99,8 @@ mod tests {
             "--force",
             "--allow-outside",
             "--dry-run",
+            "-o",
+            "/tmp/out",
             "-q",
             "--from",
             "name=spark,author=me",
@@ -112,6 +118,10 @@ mod tests {
         assert!(cli.force);
         assert!(cli.allow_outside);
         assert!(cli.dry_run);
+        assert_eq!(
+            cli.output_dir.as_deref().unwrap().to_str(),
+            Some("/tmp/out")
+        );
         assert!(cli.quiet);
         assert_eq!(cli.keywords.as_deref(), Some("name=spark,author=me"));
         assert_eq!(cli.json.as_deref().unwrap().to_str(), Some("data.json"));

@@ -553,6 +553,14 @@ content = "✅ Generated {{$PROJECTNAME}}"
 > string after all placeholder replacements.
 
 
+## Output directory 📂
+
+By default files are created relative to the current directory. Point Spark somewhere else with `--output-dir` / `-o`; the directory is created if needed and relative `[[files]]` paths are resolved from it. The template name and `--json` path are still looked up relative to where you ran the command.
+
+```sh
+spark python -o ~/projects/new_app
+```
+
 ## Dry run 🔍
 
 See what a template would produce without touching the filesystem, the clipboard, or git:
