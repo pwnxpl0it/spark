@@ -199,10 +199,15 @@ impl Template {
         parser.parse(string)?.render(&empty_globals)
     }
 
-    /// Resolves project name if `{{$PROJECTNAME}}` is referenced.
+    /// Resolves the project name if `{{$PROJECTNAME}}` is referenced by the file,
+    /// its path, or `options.project_root`, prompting when interactive.
+    ///
+    /// Only the keyword map is updated; `project_root` keeps its template form and
+    /// is substituted once every keyword is known (see `render_inner`), so values
+    /// such as `"{{$PROJECTNAME}}-api"` or `"/abs/{{$PROJECTNAME}}"` work as written.
     pub fn resolve_project_name(
         keywords: &mut HashMap<String, String>,
-        options: &mut Options,
+        options: &Options,
         file: &File,
         interactive: bool,
     ) -> crate::Result<String> {
@@ -216,7 +221,6 @@ impl Template {
         {
             if let Some(existing) = keywords.get("{{$PROJECTNAME}}") {
                 if !existing.is_empty() {
-                    options.set_project_root(existing);
                     return Ok(existing.clone());
                 }
             }
@@ -229,7 +233,6 @@ impl Template {
                 prompt("Project name").map_err(|e| crate::Error::Prompt(e.to_string()))?;
 
             keywords.insert("{{$PROJECTNAME}}".to_string(), project_name.clone());
-            options.set_project_root(&project_name);
             Ok(project_name)
         } else {
             Ok(String::new())
@@ -260,7 +263,7 @@ impl Template {
     fn render_inner(
         &self,
         context: &Context,
-    ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
+    ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>, Options)> {
         let re = Keywords::regex();
         let options = self.options.clone().unwrap_or_default();
         let json_data = context
@@ -288,7 +291,7 @@ impl Template {
             if project.is_empty() {
                 project = Self::resolve_project_name(
                     &mut keywords,
-                    &mut active_options,
+                    &active_options,
                     file,
                     context.interactive,
                 )?;
@@ -304,7 +307,12 @@ impl Template {
             });
         }
 
-        Ok((rendered, keywords))
+        // `project_root` may reference `{{$PROJECTNAME}}` or any other keyword;
+        // resolve it with the final keyword map so the git hook sees a real path.
+        active_options.project_root =
+            Keywords::replace_keywords(&keywords, &active_options.project_root);
+
+        Ok((rendered, keywords, active_options))
     }
 
     /// Pure in-memory rendering of the template with the provided [`Context`].
@@ -331,7 +339,7 @@ impl Template {
     /// assert_eq!(rendered[0].content, "Hello World!");
     /// ```
     pub fn render(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
-        let (rendered, _keywords) = self.render_inner(context)?;
+        let (rendered, _keywords, _options) = self.render_inner(context)?;
         Ok(rendered)
     }
 
@@ -341,7 +349,7 @@ impl Template {
         &self,
         context: &Context,
     ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
-        let (rendered, keywords) = self.render_inner(context)?;
+        let (rendered, keywords, options) = self.render_inner(context)?;
 
         if !context.allow_outside {
             if let Some(unsafe_file) = rendered
@@ -385,8 +393,8 @@ impl Template {
                 })?;
         }
 
-        if let Some(options) = &self.options {
-            options.clone().handle();
+        if self.options.is_some() {
+            options.handle();
         }
 
         Ok((rendered, keywords))
@@ -510,11 +518,10 @@ mod tests {
     #[test]
     fn resolve_project_name_without_placeholder_is_noop() {
         let mut keywords = HashMap::new();
-        let mut options = Options::default();
+        let options = Options::default();
         let file = File::new("test.txt".into(), "hello world".into());
 
-        let result =
-            Template::resolve_project_name(&mut keywords, &mut options, &file, true).unwrap();
+        let result = Template::resolve_project_name(&mut keywords, &options, &file, true).unwrap();
         assert!(result.is_empty());
         assert!(!keywords.contains_key("{{$PROJECTNAME}}"));
     }
@@ -1400,5 +1407,40 @@ Status: {{{{$.status[0]}}}}
             .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap();
         assert!(dir.join("escaped.txt").exists());
+    }
+
+    #[test]
+    fn git_init_uses_resolved_project_root() {
+        // Regression: `project_root = "{{$PROJECTNAME}}"` with `git = true` used to run
+        // the git hook on the raw token, so `git init` failed with
+        // "Project root '{{$PROJECTNAME}}' is not a directory".
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let template = Template {
+            info: None,
+            options: Some(Options {
+                git: true,
+                use_liquid: Some(false),
+                json_data: None,
+                project_root: format!("{}/{{{{$PROJECTNAME}}}}", dir.display()),
+            }),
+            files: Some(vec![File::new(
+                format!("{}/{{{{$PROJECTNAME}}}}/plugin/init.lua", dir.display()),
+                "require(\"{{$PROJECTNAME}}\")".into(),
+            )]),
+        };
+
+        let ctx = Context::new()
+            .with_var("PROJECTNAME", "ff")
+            .non_interactive()
+            .allow_outside(true);
+        template.extract_with_context(&ctx).unwrap();
+
+        assert!(dir.join("ff/plugin/init.lua").exists());
+        assert!(
+            dir.join("ff/.git").is_dir(),
+            "git repository should be initialised inside the resolved project root"
+        );
+        assert!(!dir.join("{{$PROJECTNAME}}").exists());
     }
 }
