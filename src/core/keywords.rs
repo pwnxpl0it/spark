@@ -22,7 +22,8 @@ impl Keywords {
     pub fn init() -> HashMap<String, String> {
         let mut keywords = HashMap::new();
 
-        if let Ok(home) = env::var("HOME") {
+        // Windows has no `HOME`; `USERPROFILE` is the equivalent.
+        if let Ok(home) = env::var("HOME").or_else(|_| env::var("USERPROFILE")) {
             keywords.insert(Self::from("HOME", None), home);
         }
 
@@ -125,7 +126,7 @@ mod tests {
         assert!(keywords.contains_key("{{$YYYY}}"));
         assert!(keywords.contains_key("{{$MM}}"));
         assert!(keywords.contains_key("{{$DD}}"));
-        if std::env::var("HOME").is_ok() {
+        if std::env::var("HOME").is_ok() || std::env::var("USERPROFILE").is_ok() {
             assert!(keywords.contains_key("{{$HOME}}"));
         }
     }
