@@ -12,9 +12,17 @@ pub struct Config {
     pub templates_path: String,
 }
 
+/// Uses `/` as the separator on every platform. Windows accepts forward
+/// slashes, and these paths are interpolated into TOML basic strings (the
+/// bootstrap `new.toml`, `{{$TEMPLATES_PATH}}`), where a backslash would be
+/// read as an escape sequence (`\U` in `C:\Users`).
+fn normalize_separators(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
 impl Config {
     pub fn new(path: &str) -> Self {
-        let config_path = shellexpand::tilde(path).to_string();
+        let config_path = normalize_separators(&shellexpand::tilde(path));
         let config_dir = Path::new(&config_path)
             .parent()
             .unwrap_or_else(|| Path::new("."));
@@ -22,7 +30,7 @@ impl Config {
 
         Self {
             path: config_path,
-            templates_path: shellexpand::tilde(templates.to_str().unwrap()).to_string(),
+            templates_path: normalize_separators(&templates.to_string_lossy()),
         }
     }
 
@@ -125,7 +133,6 @@ content = '''
 mod tests {
     use super::Config;
     use std::fs;
-    use std::path::Path;
 
     #[test]
     fn new_expands_tilde_and_derives_templates_path() {
@@ -133,21 +140,41 @@ mod tests {
         let expected_path = shellexpand::tilde("~/.config/spark/config.toml").to_string();
         let expected_templates = shellexpand::tilde("~/.config/spark/templates").to_string();
 
-        assert_eq!(cfg.path, expected_path);
-        // Compare as paths: on Windows the derived value uses `\` for the
-        // last component while the expanded literal keeps `/`.
-        assert_eq!(
-            Path::new(&cfg.templates_path),
-            Path::new(&expected_templates)
-        );
+        assert_eq!(cfg.path, expected_path.replace('\\', "/"));
+        assert_eq!(cfg.templates_path, expected_templates.replace('\\', "/"));
+        assert!(!cfg.path.contains('\\'));
+        assert!(!cfg.templates_path.contains('\\'));
     }
 
     #[test]
     fn new_with_absolute_path() {
         let cfg = Config::new("/tmp/spark_cfg/config.toml");
         assert_eq!(cfg.path, "/tmp/spark_cfg/config.toml");
-        let expected = Path::new("/tmp/spark_cfg").join("templates");
-        assert_eq!(cfg.templates_path, expected.to_string_lossy());
+        assert_eq!(cfg.templates_path, "/tmp/spark_cfg/templates");
+    }
+
+    #[test]
+    fn new_normalizes_windows_separators() {
+        let cfg = Config::new("C:\\Users\\me\\.config\\spark\\config.toml");
+        assert_eq!(cfg.path, "C:/Users/me/.config/spark/config.toml");
+        assert_eq!(cfg.templates_path, "C:/Users/me/.config/spark/templates");
+    }
+
+    #[test]
+    fn bootstrap_template_parses_when_config_dir_has_backslashes() {
+        // Regression: on Windows the templates path was written into a TOML
+        // basic string with backslashes, so `new.toml` failed to parse.
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().join("cfg");
+        let win_style = dir.to_string_lossy().replace('/', "\\");
+        let cfg = Config::new(&format!("{win_style}\\config.toml"));
+        cfg.init();
+
+        let new_tpl = fs::read_to_string(dir.join("templates/new.toml")).unwrap();
+        let parsed: spark::Template = toml::from_str(&new_tpl).expect("new.toml must parse");
+        let path = &parsed.files.unwrap()[0].path;
+        assert!(!path.contains('\\'), "{path}");
+        assert!(path.ends_with("/templates/{{$PROJECTNAME}}.toml"), "{path}");
     }
 
     #[test]
