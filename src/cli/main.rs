@@ -80,7 +80,11 @@ fn main() {
 
         if args.is_present("git") {
             options.set_git(true);
-            options.project_root = "{{$PROJECTNAME}}".to_string();
+            // Only fall back to prompting for a project name when the template
+            // did not already define where the repository root lives.
+            if options.project_root.trim().is_empty() {
+                options.project_root = "{{$PROJECTNAME}}".to_string();
+            }
         }
 
         if args.is_present("no-liquid") {
