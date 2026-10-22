@@ -5,7 +5,7 @@ pub mod git;
 impl Default for Options {
     fn default() -> Self {
         Self {
-            json_data: Some(serde_json::Value::Null),
+            json_data: None,
             use_liquid: Some(true),
             git: false,
             project_root: String::new(),
@@ -56,8 +56,18 @@ mod tests {
         let options = Options::default();
         assert!(!options.git);
         assert_eq!(options.use_liquid, Some(true));
-        assert_eq!(options.json_data, Some(serde_json::Value::Null));
+        assert_eq!(options.json_data, None);
         assert!(options.project_root.is_empty());
+    }
+
+    #[test]
+    fn default_options_serialize_to_toml() {
+        let template = crate::Template::builder()
+            .with_options(Options::default())
+            .with_file(crate::File::create("a.txt", "b"));
+        let encoded = toml::to_string(&template).expect("default options must serialize");
+        assert!(encoded.contains("use_liquid = true"));
+        assert!(!encoded.contains("json_data"));
     }
 
     #[test]
