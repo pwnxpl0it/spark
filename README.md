@@ -412,6 +412,16 @@ With this feature, you can fully automate project creation without interactive p
 
 ---
 
+### Unresolved placeholders
+
+A plain `{{$NAME}}` with no value from the config, environment, `--from`, or JSON is replaced with an empty string and a warning is printed. Pass `--strict` to abort instead:
+
+```sh
+spark template --strict
+```
+
+Library users pick the behaviour with `Context::on_missing(MissingPolicy::{Empty, Keep, Error})`.
+
 ## Environment Variables ⚙️
 
 Spark supports placeholders that map to environment variables. You can also use `.env` files for placeholder substitution.
