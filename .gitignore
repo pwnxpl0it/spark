@@ -2,3 +2,9 @@
 /templates
 /tests
 todo.md
+
+# scratch templates and patches in the repo root
+/*.toml
+!/Cargo.toml
+!/rustfmt.toml
+*.patch
