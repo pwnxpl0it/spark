@@ -16,7 +16,7 @@ pub struct Cli {
     pub quiet: bool,
 
     /// Config path
-    #[arg(short = 'c', long, default_value = crate::config::DEFAULT_CONFIG_PATH)]
+    #[arg(short = 'c', long, global = true, default_value = crate::config::DEFAULT_CONFIG_PATH)]
     pub config: String,
 
     /// Read key,value pairs from a JSON file
@@ -58,6 +58,8 @@ pub struct Cli {
 pub enum Commands {
     /// Creates a template for the current directory
     Init,
+    /// Lists the templates available in the templates directory
+    List,
 }
 
 impl Cli {
@@ -140,5 +142,18 @@ mod tests {
         use clap::CommandFactory;
         let cmd = Cli::command();
         assert_eq!(cmd.get_version(), Some(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn parses_list_subcommand() {
+        let cli = Cli::try_parse_from(["spark", "list"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::List)));
+    }
+
+    #[test]
+    fn config_flag_works_after_subcommand() {
+        let cli = Cli::try_parse_from(["spark", "list", "-c", "/tmp/x.toml"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::List)));
+        assert_eq!(cli.config, "/tmp/x.toml");
     }
 }

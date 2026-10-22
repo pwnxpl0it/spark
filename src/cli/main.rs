@@ -34,6 +34,7 @@ fn run() -> spark::Result<()> {
 
     match (&args.command, args.template.as_deref()) {
         (Some(Commands::Init), _) => run_init(),
+        (Some(Commands::List), _) => run_list(&config),
         (None, Some(template)) => run_template(&args, &config, template, keywords),
         (None, None) => Err(Error::Custom(format!(
             "no template specified, see {}",
@@ -75,6 +76,57 @@ fn run_init() -> spark::Result<()> {
     let dest = format!("{name}.toml");
     eprintln!("{}: {}", "Creating Template".bold().green(), dest.yellow());
     Template::generate(&dest).map_err(Error::Custom)
+}
+
+/// Returns the sorted template names (file stem) found in the templates dir,
+/// each paired with its `[info]` summary when the file parses.
+fn list_templates(config: &Config) -> spark::Result<Vec<(String, Option<String>)>> {
+    let dir = Path::new(&config.templates_path);
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries: Vec<(String, Option<String>)> = fs::read_dir(dir)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|ext| ext == "toml"))
+        .map(|p| {
+            let name = p
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let summary = Template::from_file(&p)
+                .ok()
+                .and_then(|t| t.info.and_then(|i| i.description.or(i.name)));
+            (name, summary)
+        })
+        .collect();
+    entries.sort();
+    Ok(entries)
+}
+
+fn run_list(config: &Config) -> spark::Result<()> {
+    let templates = list_templates(config)?;
+    if templates.is_empty() {
+        eprintln!(
+            "{} {}",
+            "No templates found in".yellow(),
+            config.templates_path.bold()
+        );
+        return Ok(());
+    }
+    eprintln!(
+        "{}: {}\n",
+        "Templates in".blue(),
+        config.templates_path.bold()
+    );
+    for (name, summary) in templates {
+        match summary {
+            Some(desc) => println!("{}  {}", name.green().bold(), desc.dimmed()),
+            None => println!("{}", name.green().bold()),
+        }
+    }
+    Ok(())
 }
 
 /// Resolves `<name>` to a template file: a local path first, then the
@@ -193,6 +245,39 @@ mod tests {
 
         let err = resolve_template_path(&config, "missing").unwrap_err();
         assert!(err.to_string().contains("not found"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_templates_reads_toml_files_sorted_with_descriptions() {
+        let dir = std::env::temp_dir().join("spark_test_list_templates");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("templates")).unwrap();
+        fs::write(
+            dir.join("templates/zeta.toml"),
+            "[info]\ndescription='last one'\n[[files]]\npath='a'\ncontent='b'",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("templates/alpha.toml"),
+            "[[files]]\npath='a'\ncontent='b'",
+        )
+        .unwrap();
+        fs::write(dir.join("templates/notes.txt"), "ignored").unwrap();
+        let config = Config::new(&dir.join("config.toml").to_string_lossy());
+
+        let listed = list_templates(&config).unwrap();
+        assert_eq!(
+            listed,
+            vec![
+                ("alpha".to_string(), None),
+                ("zeta".to_string(), Some("last one".to_string()))
+            ]
+        );
+
+        let missing = Config::new("/nonexistent/spark/config.toml");
+        assert!(list_templates(&missing).unwrap().is_empty());
 
         let _ = fs::remove_dir_all(&dir);
     }
