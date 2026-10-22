@@ -375,17 +375,34 @@ impl Template {
         Ok(())
     }
 
+    /// Returns the `[info]` section formatted for display, one `Label: value`
+    /// line per field that is present. Returns `None` when there is no info
+    /// or every field is missing.
+    pub fn info_summary(&self) -> Option<String> {
+        let information = self.info.as_ref()?;
+        let fields = [
+            ("Name", &information.name),
+            ("Description", &information.description),
+            ("Author", &information.author),
+        ];
+        let lines: Vec<String> = fields
+            .iter()
+            .filter_map(|(label, value)| {
+                value
+                    .as_ref()
+                    .map(|v| format!("{}: {}", label.yellow(), v.bold().green()))
+            })
+            .collect();
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join("\n"))
+        }
+    }
+
     pub fn show_info(template: &Self) {
-        if let Some(information) = &template.info {
-            println!(
-                "{}: {}\n{}: {}\n{}: {}\n",
-                "Name".yellow(),
-                information.name.as_ref().unwrap().bold().green(),
-                "Description".yellow(),
-                information.description.as_ref().unwrap().bold().green(),
-                "Author".yellow(),
-                information.author.as_ref().unwrap().bold().green()
-            )
+        if let Some(summary) = template.info_summary() {
+            println!("{}\n", summary);
         }
     }
 }
@@ -1242,5 +1259,27 @@ Status: {{{{$.status[0]}}}}
         );
 
         cleanup();
+    }
+
+    #[test]
+    fn show_info_tolerates_partial_info() {
+        let template = Template::builder().with_info(Information::new(
+            Some("only-name".into()),
+            None,
+            None,
+        ));
+        // Must not panic.
+        Template::show_info(&template);
+        let summary = template.info_summary().unwrap();
+        assert!(summary.contains("only-name"));
+        assert!(!summary.contains("Description"));
+        assert!(!summary.contains("Author"));
+    }
+
+    #[test]
+    fn info_summary_is_none_without_info() {
+        assert!(Template::builder().info_summary().is_none());
+        let empty = Template::builder().with_info(Information::new(None, None, None));
+        assert!(empty.info_summary().is_none());
     }
 }
