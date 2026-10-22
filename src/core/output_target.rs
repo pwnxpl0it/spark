@@ -122,13 +122,7 @@ impl OutputTarget {
                         }
                     }
                 }
-                // Preserve the existing behaviour: replace the legacy
-                // `initPJNAME` sentinel with `{{$PROJECTNAME}}`.
-                std::fs::write(
-                    std::path::Path::new(&expanded),
-                    content.replace("initPJNAME", "{{$PROJECTNAME}}"),
-                )
-                .map(|_| {
+                std::fs::write(std::path::Path::new(&expanded), content).map(|_| {
                     println!("{}: {}", "file written".blue(), expanded.bold().green());
                 })
             }
@@ -289,17 +283,17 @@ mod tests {
     }
 
     #[test]
-    fn file_write_replaces_init_pjname_placeholder() {
+    fn file_write_keeps_content_verbatim() {
         let dir = std::env::temp_dir().join("spark_test_output_target_pjname");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
         let file_path = dir.join("tpl.toml");
         let target = OutputTarget::File(file_path.clone());
-        target.write("path = initPJNAME").unwrap();
+        target.write("path = initPJNAME {{$X}}").unwrap();
 
         let content = std::fs::read_to_string(&file_path).unwrap();
-        assert_eq!(content, "path = {{$PROJECTNAME}}");
+        assert_eq!(content, "path = initPJNAME {{$X}}");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

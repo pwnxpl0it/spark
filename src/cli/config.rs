@@ -24,9 +24,13 @@ impl Config {
     }
 
     pub fn init(self) {
-        // "initPJNAME" wtf is it ?
-        // That's just a way to workaround auto replacing PROJECTNAME in templates
+        // `{{$$PROJECTNAME}}` is an escaped placeholder: it is written out as
+        // the literal `{{$PROJECTNAME}}` so the generated template prompts for
+        // a name when it is used later.
         let conf_template = r#"
+[options]
+use_liquid = false
+
 [[files]]
 path = '{{$TEMPLATES_PATH}}/new.toml'
 content = '''
@@ -36,10 +40,10 @@ description = "A Template for making a template"
 author = "Mohamed Tarek @pwnxpl0it"
 
 [[files]]
-path="{{$TEMPLATES_PATH}}/initPJNAME.toml"
+path="{{$TEMPLATES_PATH}}/{{$$PROJECTNAME}}.toml"
 content="""
 [info]
-name = "initPJNAME"
+name = "{{$$PROJECTNAME}}"
 description = ""
 author = ""
 
@@ -174,6 +178,10 @@ GITHUB = "https://github.com/pwnxpl0it"
         assert!(config_path.exists());
         let content = fs::read_to_string(&config_path).unwrap();
         assert!(content.contains("[Keywords]"));
+
+        let new_tpl = fs::read_to_string(dir.join("templates/new.toml")).unwrap();
+        assert!(new_tpl.contains("{{$PROJECTNAME}}.toml"), "{new_tpl}");
+        assert!(!new_tpl.contains("$$"), "{new_tpl}");
 
         let _ = fs::remove_dir_all(&dir);
     }

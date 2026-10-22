@@ -44,14 +44,14 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn write_content_replaces_init_pjname_placeholder() {
+    fn write_content_writes_verbatim() {
         let file_path = std::env::temp_dir().join("spark_test_write_content.txt");
         let _ = fs::remove_file(&file_path);
 
         write_content(&file_path, "Hello initPJNAME!").expect("write_content should succeed");
 
         let read = fs::read_to_string(&file_path).expect("should read written file");
-        assert_eq!(read, "Hello {{$PROJECTNAME}}!");
+        assert_eq!(read, "Hello initPJNAME!");
 
         let _ = fs::remove_file(&file_path);
     }

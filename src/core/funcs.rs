@@ -29,6 +29,9 @@ impl Fns {
         for cap in re.captures_iter(txt) {
             if let Some(key_match) = cap.get(0) {
                 let keyword = key_match.as_str().to_string();
+                if Keywords::is_escaped(&keyword) {
+                    continue;
+                }
                 // need to compare the overall arms not just checking if it's inserted or not
                 // if lhs function is the same as rhs function then no need to override in the IndexMap
                 if !keywords.contains_key(&keyword) {
@@ -329,5 +332,13 @@ mod tests {
                 .unwrap_or_default(),
             "spark"
         );
+    }
+
+    #[test]
+    fn find_ignores_escaped_placeholders() {
+        let re = keyword_re();
+        let keywords = HashMap::new();
+        let found = Fns::find("{{$$NAME:read}} {{$$OTHER}}", &keywords, &re).unwrap();
+        assert!(found.is_empty());
     }
 }
