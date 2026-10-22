@@ -1,5 +1,7 @@
 use crate::Keywords;
 use chrono::{Datelike, Local, Utc};
+use regex::Regex;
+use std::sync::OnceLock;
 use std::{collections::HashMap, env};
 
 impl Keywords {
@@ -49,12 +51,24 @@ impl Keywords {
         keywords
     }
 
+    /// Compiled `{{$...}}` matcher, built once per process.
+    pub fn regex() -> &'static Regex {
+        static RE: OnceLock<Regex> = OnceLock::new();
+        RE.get_or_init(|| Regex::new(crate::templates::KEYWORDS_REGEX).expect("valid regex"))
+    }
+
+    /// Replaces every `{{$...}}` token in `data` with its value from `keywords`
+    /// in a single pass. Tokens without a value are left untouched.
     pub fn replace_keywords(keywords: &HashMap<String, String>, data: &str) -> String {
-        let mut output = data.to_string();
-        for (key, value) in keywords.iter() {
-            output = output.replace(key, value);
-        }
-        output
+        Self::regex()
+            .replace_all(data, |caps: &regex::Captures| {
+                let token = &caps[0];
+                keywords
+                    .get(token)
+                    .cloned()
+                    .unwrap_or_else(|| token.to_string())
+            })
+            .into_owned()
     }
 }
 
@@ -108,5 +122,14 @@ mod tests {
         let map = HashMap::new();
         let input = "Hello {{$MISSING}}";
         assert_eq!(Keywords::replace_keywords(&map, input), input);
+    }
+
+    #[test]
+    fn replace_keywords_is_single_pass() {
+        // A value that itself looks like a placeholder must not be re-expanded.
+        let mut map = HashMap::new();
+        map.insert("{{$A}}".to_string(), "{{$B}}".to_string());
+        map.insert("{{$B}}".to_string(), "leaked".to_string());
+        assert_eq!(Keywords::replace_keywords(&map, "{{$A}}"), "{{$B}}");
     }
 }
