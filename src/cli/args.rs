@@ -35,11 +35,11 @@ pub struct Cli {
     #[arg(long, requires = "template")]
     pub no_liquid: bool,
 
-    /// Key, value pairs to be replaced.
-    /// You can use this to skip user inputs and other function calls.
-    /// Example: 'name=spark, author=pwnxpl0it'
-    #[arg(long = "from", requires = "template", value_name = "PAIRS")]
-    pub keywords: Option<String>,
+    /// Key=value pairs to pre-set placeholders and skip prompts.
+    /// Comma-separated, repeatable; a comma inside a value is kept when the
+    /// text after it has no '='. Example: --from 'name=spark, tags=a,b' --from author=me
+    #[arg(long = "from", requires = "template", value_name = "PAIRS", action = clap::ArgAction::Append)]
+    pub keywords: Vec<String>,
 
     /// Fail when a placeholder has no value instead of writing an empty string
     #[arg(long, requires = "template")]
@@ -123,7 +123,7 @@ mod tests {
             Some("/tmp/out")
         );
         assert!(cli.quiet);
-        assert_eq!(cli.keywords.as_deref(), Some("name=spark,author=me"));
+        assert_eq!(cli.keywords, vec!["name=spark,author=me".to_string()]);
         assert_eq!(cli.json.as_deref().unwrap().to_str(), Some("data.json"));
         assert_eq!(cli.config, "/tmp/config.toml");
     }
@@ -171,5 +171,11 @@ mod tests {
         let cli = Cli::try_parse_from(["spark", "list", "-c", "/tmp/x.toml"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::List)));
         assert_eq!(cli.config, "/tmp/x.toml");
+    }
+
+    #[test]
+    fn from_flag_is_repeatable() {
+        let cli = Cli::try_parse_from(["spark", "demo", "--from", "a=1", "--from", "b=2"]).unwrap();
+        assert_eq!(cli.keywords, vec!["a=1".to_string(), "b=2".to_string()]);
     }
 }

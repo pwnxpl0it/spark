@@ -417,6 +417,12 @@ Created by JohnDoe
 Hackerman mode: no
 ```
 
+`--from` can be repeated, and a comma stays inside a value when the text after it has no `=`:
+
+```sh
+spark template --from "tags=rust,cli" --from "author=JohnDoe"
+```
+
 With this feature, you can fully automate project creation without interactive prompts! 🚀
 
 ---
