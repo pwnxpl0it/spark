@@ -291,8 +291,8 @@ mod tests {
 
     #[test]
     fn resolve_template_prefers_local_then_config_dir() {
-        let dir = std::env::temp_dir().join("spark_test_resolve_template");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         fs::create_dir_all(dir.join("templates")).unwrap();
         fs::write(dir.join("templates/demo.toml"), "").unwrap();
         let config = Config::new(&dir.join("config.toml").to_string_lossy());
@@ -302,14 +302,12 @@ mod tests {
 
         let err = resolve_template_path(&config, "missing").unwrap_err();
         assert!(err.to_string().contains("not found"));
-
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn list_templates_reads_toml_files_sorted_with_descriptions() {
-        let dir = std::env::temp_dir().join("spark_test_list_templates");
-        let _ = fs::remove_dir_all(&dir);
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
         fs::create_dir_all(dir.join("templates")).unwrap();
         fs::write(
             dir.join("templates/zeta.toml"),
@@ -335,7 +333,5 @@ mod tests {
 
         let missing = Config::new("/nonexistent/spark/config.toml");
         assert!(list_templates(&missing).unwrap().is_empty());
-
-        let _ = fs::remove_dir_all(&dir);
     }
 }
