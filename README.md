@@ -67,13 +67,17 @@ cargo install --git https://github.com/pwnxpl0it/spark
 ```
 
 ### Precompiled Binaries
-Download a precompiled binary from the [Releases](https://github.com/pwnxpl0it/spark/releases) page:
+Every release ships binaries for Linux (x86_64, aarch64), macOS (Intel, Apple Silicon), and Windows (x86_64) on the [Releases](https://github.com/pwnxpl0it/spark/releases) page, each with a `.sha256` checksum. Archives are named `spark-<VERSION>-<TARGET>.tar.gz` (or `.zip` on Windows):
 
 ```sh
-sudo tar -xzf spark-<VERSION>.tar.gz -C /usr/local/bin
+# Linux / macOS
+tar -xzf spark-<VERSION>-<TARGET>.tar.gz
+sudo install -m 755 spark-<VERSION>-<TARGET>/spark /usr/local/bin/spark
 ```
 
-Replace `<VERSION>` with the desired release version.
+On Windows, extract the `.zip` and put `spark.exe` somewhere on your `PATH`.
+
+Replace `<VERSION>` with the release tag (for example `v2.0.0`) and `<TARGET>` with your platform, such as `x86_64-unknown-linux-gnu` or `aarch64-apple-darwin`.
 
 Verify installation by running:
 
