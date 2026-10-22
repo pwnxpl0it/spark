@@ -125,6 +125,7 @@ content = '''
 mod tests {
     use super::Config;
     use std::fs;
+    use std::path::Path;
 
     #[test]
     fn new_expands_tilde_and_derives_templates_path() {
@@ -140,7 +141,8 @@ mod tests {
     fn new_with_absolute_path() {
         let cfg = Config::new("/tmp/spark_cfg/config.toml");
         assert_eq!(cfg.path, "/tmp/spark_cfg/config.toml");
-        assert_eq!(cfg.templates_path, "/tmp/spark_cfg/templates");
+        let expected = Path::new("/tmp/spark_cfg").join("templates");
+        assert_eq!(cfg.templates_path, expected.to_string_lossy());
     }
 
     #[test]

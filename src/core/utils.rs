@@ -93,8 +93,8 @@ mod tests {
             .iter()
             .map(|f| {
                 f.trim_start_matches(&*test_dir.to_string_lossy())
-                    .trim_start_matches('/')
-                    .to_string()
+                    .trim_start_matches(['/', '\\'])
+                    .replace('\\', "/")
             })
             .collect();
 
