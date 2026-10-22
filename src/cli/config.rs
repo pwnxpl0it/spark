@@ -75,7 +75,7 @@ content = '''
                 if let Some(keywords_table) = toml_val.get("Keywords").and_then(|v| v.as_table()) {
                     for (key, value) in keywords_table.iter() {
                         let value_str = value.as_str().unwrap_or(&value.to_string()).to_string();
-                        keywords.insert(format!("{{${}}}", key), value_str);
+                        keywords.insert(spark::Keywords::from(key, None), value_str);
                     }
                 }
             }
@@ -134,11 +134,11 @@ GITHUB = "https://github.com/pwnxpl0it"
         let keywords = cfg.get_keywords();
 
         assert_eq!(
-            keywords.get("{$AUTHOR}").map(String::as_str),
+            keywords.get("{{$AUTHOR}}").map(String::as_str),
             Some("pwnxpl0it")
         );
         assert_eq!(
-            keywords.get("{$GITHUB}").map(String::as_str),
+            keywords.get("{{$GITHUB}}").map(String::as_str),
             Some("https://github.com/pwnxpl0it")
         );
 
