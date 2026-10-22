@@ -23,6 +23,7 @@ fn main() -> ExitCode {
 fn run() -> spark::Result<()> {
     let args = Cli::parse_args();
     let config = Config::new(&args.config);
+    config.ensure_default_exists(args.config == DEFAULT_CONFIG_PATH);
     dotenv().ok();
     let mut keywords = Keywords::init();
     keywords.extend(config.get_keywords());
