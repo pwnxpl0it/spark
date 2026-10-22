@@ -48,6 +48,10 @@ pub struct Cli {
     /// Overwrite existing files without asking
     #[arg(short = 'f', long, requires = "template")]
     pub force: bool,
+
+    /// Allow destination paths containing '..' (writing outside the working directory)
+    #[arg(long, requires = "template")]
+    pub allow_outside: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -83,6 +87,7 @@ mod tests {
             "--no-liquid",
             "--strict",
             "--force",
+            "--allow-outside",
             "-q",
             "--from",
             "name=spark,author=me",
@@ -98,6 +103,7 @@ mod tests {
         assert!(cli.no_liquid);
         assert!(cli.strict);
         assert!(cli.force);
+        assert!(cli.allow_outside);
         assert!(cli.quiet);
         assert_eq!(cli.keywords.as_deref(), Some("name=spark,author=me"));
         assert_eq!(cli.json.as_deref().unwrap().to_str(), Some("data.json"));
