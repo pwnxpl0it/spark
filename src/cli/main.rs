@@ -207,8 +207,23 @@ fn run_template(
     if args.strict {
         context = context.on_missing(MissingPolicy::Error);
     }
+    if args.dry_run {
+        let rendered = parsed_template.render(&context)?;
+        print_dry_run(&rendered);
+        return Ok(());
+    }
+
     parsed_template.extract_with_context(&context)?;
     Ok(())
+}
+
+/// Prints each rendered file as a `==> path` header followed by its content.
+fn print_dry_run(rendered: &[spark::RenderedFile]) {
+    eprintln!("{}", "dry run: nothing will be written".yellow().bold());
+    for file in rendered {
+        println!("{} {}", "==>".blue().bold(), file.path.bold());
+        println!("{}", file.content);
+    }
 }
 
 #[cfg(test)]
