@@ -1,6 +1,6 @@
 use crate::config::*;
 use colored::*;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use spark::{Context, Keywords, MissingPolicy, Template};
 use std::fs;
 mod args;

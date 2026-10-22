@@ -1327,7 +1327,8 @@ Status: {{{{$.status[0]}}}}
 
         let generated = fs::read_to_string(&dest).unwrap();
         assert!(generated.contains("hello {{$$WORLD}}"), "{generated}");
-        assert!(generated.contains("path = 'tpl.txt'"), "{generated}");
+        let parsed: Template = generated.parse().unwrap();
+        assert_eq!(parsed.files.unwrap()[0].path, "tpl.txt");
 
         let _ = fs::remove_dir_all(&dir);
     }
