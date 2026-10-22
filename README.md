@@ -544,6 +544,16 @@ content = "✅ Generated {{$PROJECTNAME}}"
 > string after all placeholder replacements.
 
 
+## Existing files 🛡️
+
+Spark checks every destination before writing anything. If a file already exists it asks before overwriting, and refuses in non-interactive use. Pass `--force` / `-f` to overwrite without asking:
+
+```sh
+spark template --force
+```
+
+Library callers use `Context::force(true)`; otherwise `extract_with_context` returns `Error::FileExists`.
+
 ## Git Integration 🐙
 
 Initialize a Git repository during project creation:

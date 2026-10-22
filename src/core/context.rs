@@ -22,6 +22,7 @@ pub struct Context {
     pub(crate) json_data: Option<serde_json::Value>,
     pub(crate) interactive: bool,
     pub(crate) on_missing: MissingPolicy,
+    pub(crate) force: bool,
 }
 
 impl Default for Context {
@@ -38,6 +39,7 @@ impl Context {
             json_data: None,
             interactive: true,
             on_missing: MissingPolicy::default(),
+            force: false,
         }
     }
 
@@ -49,6 +51,7 @@ impl Context {
             json_data: None,
             interactive: true,
             on_missing: MissingPolicy::default(),
+            force: false,
         }
     }
 
@@ -181,6 +184,19 @@ impl Context {
         self.on_missing
     }
 
+    /// Allows existing destination files to be overwritten without asking.
+    /// When `false` (default), `extract_with_context` prompts in interactive
+    /// mode and returns [`crate::Error::FileExists`] otherwise.
+    pub fn force(mut self, force: bool) -> Self {
+        self.force = force;
+        self
+    }
+
+    /// Returns whether existing files may be overwritten silently.
+    pub fn is_force(&self) -> bool {
+        self.force
+    }
+
     /// Checks if interactive prompts are enabled.
     pub fn is_interactive(&self) -> bool {
         self.interactive
@@ -218,6 +234,7 @@ impl From<HashMap<String, String>> for Context {
             json_data: None,
             interactive: true,
             on_missing: MissingPolicy::default(),
+            force: false,
         }
     }
 }

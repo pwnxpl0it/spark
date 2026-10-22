@@ -149,7 +149,7 @@ fn run_template(
 
     parsed_template.set_options(options);
 
-    let mut context = Context::from(keywords);
+    let mut context = Context::from(keywords).force(args.force);
     if args.strict {
         context = context.on_missing(MissingPolicy::Error);
     }
