@@ -1011,7 +1011,7 @@ cargo clippy --all-targets -- -D warnings
 cargo run -- [TEMPLATE] [OPTIONS]
 ```
 
-CI runs fmt and clippy, then builds and tests on Linux, Windows, and macOS. Unit tests cover keywords, functions, utils, templates (including JSON paths, Liquid ordering, escaping, and the overwrite and path guards), options, config, and the CLI.
+CI runs fmt, clippy, and the tests on a single Linux runner for every push and pull request. The cross-platform binaries are only compiled by the release workflow when a GitHub release is published. Unit tests cover keywords, functions, utils, templates (including JSON paths, Liquid ordering, escaping, and the overwrite and path guards), options, config, and the CLI.
 
 ## 👾 Neovim plugin (spark.nvim) 
 I wrote a neovim plugin that makes it a way easier, Check it out [spark.nvim](https://www.github.com/pwnxpl0it/spark.nvim).
