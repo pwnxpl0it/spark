@@ -1,5 +1,10 @@
 name: Rust
 
+# Fast gate for every push and pull request: formatting, clippy, and the unit
+# tests, all on a single Linux runner. Nothing here produces binaries; the
+# cross-platform release builds live in release.yml and only run when a release
+# is published.
+
 on:
   push:
     branches: [ "main" ]
@@ -10,9 +15,13 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  lint:
-    name: Format and lint
+  check:
+    name: Check, lint and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,40 +43,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: clippy (default features)
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: clippy (no clipboard)
-        run: cargo clippy --all-targets --no-default-features -- -D warnings
-
-  test:
-    name: Build and test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libwayland-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build
-        run: cargo build --verbose
+        run: cargo clippy --all-targets --locked --no-default-features -- -D warnings
 
       - name: Run tests
-        run: cargo test --verbose
-
-      - name: Build without clipboard
-        if: runner.os == 'Linux'
-        run: cargo build --verbose --no-default-features
+        run: cargo test --locked

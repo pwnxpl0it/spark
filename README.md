@@ -77,6 +77,16 @@ sudo install -m 755 spark-<VERSION>-<TARGET>/spark /usr/local/bin/spark
 
 On Windows, extract the `.zip` and put `spark.exe` somewhere on your `PATH`.
 
+> **Windows Defender / SmartScreen:** the release binaries are not code-signed, so Windows may show "Windows protected your PC" or quarantine `spark.exe` after extraction. Verify the checksum, then clear the download flag before running it:
+>
+> ```powershell
+> (Get-FileHash spark-<VERSION>-x86_64-pc-windows-msvc.zip).Hash  # compare with the .sha256 file
+> Unblock-File spark-<VERSION>-x86_64-pc-windows-msvc.zip        # before extracting, or
+> Unblock-File spark.exe                                          # after extracting
+> ```
+>
+> If Defender still removes the file, add an exclusion for it or install with `cargo install --git https://github.com/pwnxpl0it/spark` instead, which builds locally and is never flagged.
+
 Replace `<VERSION>` with the release tag (for example `v2.0.0`) and `<TARGET>` with your platform, such as `x86_64-unknown-linux-gnu` or `aarch64-apple-darwin`.
 
 Verify installation by running:
@@ -1011,7 +1021,7 @@ cargo clippy --all-targets -- -D warnings
 cargo run -- [TEMPLATE] [OPTIONS]
 ```
 
-CI runs fmt and clippy, then builds and tests on Linux, Windows, and macOS. Unit tests cover keywords, functions, utils, templates (including JSON paths, Liquid ordering, escaping, and the overwrite and path guards), options, config, and the CLI.
+CI runs fmt, clippy, and the tests on a single Linux runner for every push and pull request. The cross-platform binaries are only compiled by the release workflow when a GitHub release is published. Unit tests cover keywords, functions, utils, templates (including JSON paths, Liquid ordering, escaping, and the overwrite and path guards), options, config, and the CLI.
 
 ## 👾 Neovim plugin (spark.nvim) 
 I wrote a neovim plugin that makes it a way easier, Check it out [spark.nvim](https://www.github.com/pwnxpl0it/spark.nvim).

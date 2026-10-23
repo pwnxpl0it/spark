@@ -20,7 +20,7 @@ cargo run -- init                            # generate <cwd-name>.toml from fil
 cargo run -- list                            # list templates next to the config file
 ```
 
-CI (`.github/workflows/rust.yml`) runs fmt and clippy on Ubuntu, then build and test on Ubuntu, Windows, and macOS with `RUSTFLAGS=-Dwarnings`. Linux needs `libwayland-dev` for the `arboard` clipboard dependency, which sits behind the default `clipboard` cargo feature.
+CI (`.github/workflows/rust.yml`) runs fmt, clippy (default and `--no-default-features`), and `cargo test` on a single Ubuntu runner with `RUSTFLAGS=-Dwarnings`; binaries for all platforms are only built by `release.yml` when a release is published. `build.rs` embeds Windows VERSIONINFO via `winresource` (Windows-only build dependency) to reduce Defender/SmartScreen false positives. Linux needs `libwayland-dev` for the `arboard` clipboard dependency, which sits behind the default `clipboard` cargo feature.
 
 Tests live in `#[cfg(test)]` modules inside each source file (no `tests/` dir; it is gitignored). Filesystem fixtures use `tempfile::tempdir()`; never write into the repo cwd or change the process cwd from a test, because tests run in parallel.
 
