@@ -3,16 +3,23 @@ name: Release
 # Builds release binaries for Linux, Windows, and macOS and attaches them to the
 # GitHub release. Triggered when a release is published (create one from a `v*`
 # tag in the GitHub UI or with `gh release create vX.Y.Z`). `workflow_dispatch`
-# lets you build the artefacts without publishing a release.
+# builds the artefacts on demand; pass `tag` to (re)attach them to an existing
+# release, e.g. `gh workflow run release.yml -f tag=v2.0.1`.
 
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to upload the binaries to (leave empty to only build)"
+        required: false
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
   BIN_NAME: spark
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -76,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME}"
+          version="${RELEASE_TAG}"
           name="${BIN_NAME}-${version}-${{ matrix.target }}"
           mkdir -p "dist/${name}"
           cp "target/${{ matrix.target }}/release/${BIN_NAME}" "dist/${name}/"
@@ -90,7 +97,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $version = $env:GITHUB_REF_NAME
+          $version = $env:RELEASE_TAG
           $name = "$env:BIN_NAME-$version-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path "dist/$name" | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/$env:BIN_NAME.exe" "dist/$name/"
@@ -110,7 +117,7 @@ jobs:
   publish:
     name: Attach binaries to release
     needs: build
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || inputs.tag != ''
     runs-on: ubuntu-latest
     steps:
       - name: Download all artefacts
@@ -125,4 +132,4 @@ jobs:
       - name: Upload to release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
+        run: gh release upload "${RELEASE_TAG}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
