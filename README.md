@@ -77,16 +77,6 @@ sudo install -m 755 spark-<VERSION>-<TARGET>/spark /usr/local/bin/spark
 
 On Windows, extract the `.zip` and put `spark.exe` somewhere on your `PATH`.
 
-> **Windows Defender / SmartScreen:** the release binaries are not code-signed, so Windows may show "Windows protected your PC" or quarantine `spark.exe` after extraction. Verify the checksum, then clear the download flag before running it:
->
-> ```powershell
-> (Get-FileHash spark-<VERSION>-x86_64-pc-windows-msvc.zip).Hash  # compare with the .sha256 file
-> Unblock-File spark-<VERSION>-x86_64-pc-windows-msvc.zip        # before extracting, or
-> Unblock-File spark.exe                                          # after extracting
-> ```
->
-> If Defender still removes the file, add an exclusion for it or install with `cargo install --git https://github.com/pwnxpl0it/spark` instead, which builds locally and is never flagged.
-
 Replace `<VERSION>` with the release tag (for example `v2.0.0`) and `<TARGET>` with your platform, such as `x86_64-unknown-linux-gnu` or `aarch64-apple-darwin`.
 
 Verify installation by running:
