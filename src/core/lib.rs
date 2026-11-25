@@ -77,12 +77,14 @@ pub mod error;
 pub mod funcs;
 pub mod keywords;
 pub mod output_target;
+pub mod patch;
 pub mod templates;
 mod utils;
 
 pub use context::{Context, MissingPolicy};
 pub use error::{Error, Result};
 pub use output_target::OutputTarget;
+pub use patch::{FileMode, Position};
 use serde::{Deserialize, Serialize};
 pub use templates::{Options, RenderedFile};
 
@@ -112,12 +114,31 @@ impl Information {
 }
 
 /// A file definition entry within a template.
+///
+/// By default `content` **overwrites** the file at `path`. Set [`File::mode`]
+/// (TOML `mode = "append" | "prepend" | "insert" | "block" | "patch"`) to merge
+/// the rendered content into an existing file instead; see [`patch`] for the
+/// semantics of each mode.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct File {
     /// Target path template (supports placeholders and target URIs).
     pub path: String,
     /// Content template (supports placeholders, functions, and Liquid tags).
     pub content: String,
+    /// Write strategy. `None` is equivalent to [`FileMode::Overwrite`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<FileMode>,
+    /// Anchor line for [`FileMode::Insert`] (supports placeholders).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<String>,
+    /// Insert side for [`FileMode::Insert`]. `None` is equivalent to
+    /// [`Position::After`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<Position>,
+    /// Block id for [`FileMode::Block`] (supports placeholders). `None` uses the
+    /// default `spark` id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker: Option<String>,
 }
 
 /// Represents a complete Spark template with metadata, configuration options, and files.
@@ -143,17 +164,59 @@ pub enum Fns {
 }
 
 impl File {
-    /// Creates a new `File` entry with path and content strings.
+    /// Creates a new `File` entry with path and content strings
+    /// (overwrite mode).
     pub fn new(path: String, content: String) -> Self {
-        Self { path, content }
+        Self {
+            path,
+            content,
+            ..Default::default()
+        }
     }
 
-    /// Creates a new `File` entry from any types converting into `String`.
+    /// Creates a new `File` entry from any types converting into `String`
+    /// (overwrite mode).
     pub fn create(path: impl Into<String>, content: impl Into<String>) -> Self {
         Self {
             path: path.into(),
             content: content.into(),
+            ..Default::default()
         }
+    }
+
+    /// Returns the resolved write strategy, defaulting to
+    /// [`FileMode::Overwrite`].
+    pub fn mode(&self) -> FileMode {
+        self.mode.unwrap_or_default()
+    }
+
+    /// Returns the resolved insert position, defaulting to [`Position::After`].
+    pub fn position(&self) -> Position {
+        self.position.unwrap_or_default()
+    }
+
+    /// Sets the write strategy (builder style).
+    pub fn with_mode(mut self, mode: FileMode) -> Self {
+        self.mode = Some(mode);
+        self
+    }
+
+    /// Sets the anchor used by [`FileMode::Insert`] (builder style).
+    pub fn with_anchor(mut self, anchor: impl Into<String>) -> Self {
+        self.anchor = Some(anchor.into());
+        self
+    }
+
+    /// Sets the insert position used by [`FileMode::Insert`] (builder style).
+    pub fn with_position(mut self, position: Position) -> Self {
+        self.position = Some(position);
+        self
+    }
+
+    /// Sets the block id used by [`FileMode::Block`] (builder style).
+    pub fn with_marker(mut self, marker: impl Into<String>) -> Self {
+        self.marker = Some(marker.into());
+        self
     }
 }
 

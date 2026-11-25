@@ -62,6 +62,16 @@ pub enum Error {
     #[error("refusing to write outside the working directory: '{0}' contains '..' (use --allow-outside or Context::allow_outside to allow)")]
     UnsafePath(String),
 
+    /// A non-overwrite write mode (`append`, `insert`, `block`, `patch`, …)
+    /// failed to merge the rendered content into the destination.
+    #[error("failed to apply patch to '{path}': {message}")]
+    PatchApply {
+        /// Target path that could not be patched.
+        path: String,
+        /// Description of why the merge failed.
+        message: String,
+    },
+
     /// One or more destination files already exist and overwriting was not allowed.
     #[error("refusing to overwrite existing file(s): {} (use --force or Context::force to allow)", .0.join(", "))]
     FileExists(Vec<String>),

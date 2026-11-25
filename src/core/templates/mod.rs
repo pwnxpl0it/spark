@@ -350,6 +350,9 @@ impl Template {
         context: &Context,
     ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
         let (rendered, keywords, options) = self.render_inner(context)?;
+        // `rendered` is produced from `self.files` in order, so index-for-index
+        // the two line up; zip them to recover each entry's write mode.
+        let sources = self.files.as_deref().unwrap_or_default();
 
         if !context.allow_outside {
             if let Some(unsafe_file) = rendered
@@ -361,10 +364,15 @@ impl Template {
         }
 
         if !context.force {
+            // Only overwrite-mode entries are guarded against clobbering an
+            // existing file; patch modes exist precisely to edit files that are
+            // already on disk.
             let existing: Vec<String> = rendered
                 .iter()
-                .filter(|f| OutputTarget::from_path(&f.path).exists())
-                .map(|f| f.path.clone())
+                .zip(sources.iter())
+                .filter(|(_, src)| src.mode() == FileMode::Overwrite)
+                .filter(|(f, _)| OutputTarget::from_path(&f.path).exists())
+                .map(|(f, _)| f.path.clone())
                 .collect();
 
             if !existing.is_empty() {
@@ -384,9 +392,45 @@ impl Template {
             }
         }
 
-        for file in &rendered {
-            OutputTarget::from_path(&file.path)
-                .write(&file.content)
+        for (file, src) in rendered.iter().zip(sources.iter()) {
+            let target = OutputTarget::from_path(&file.path);
+            let mode = src.mode();
+
+            let content: std::borrow::Cow<str> = if !mode.reads_existing() {
+                std::borrow::Cow::Borrowed(file.content.as_str())
+            } else if let Some(path) = target.expanded_path() {
+                // Patch modes merge into the current destination. Anchor/marker
+                // may carry placeholders, so resolve them with the final keywords.
+                let existing = fs::read_to_string(&path).ok();
+                let anchor = src
+                    .anchor
+                    .as_deref()
+                    .map(|a| Keywords::unescape(&Keywords::replace_keywords(&keywords, a)));
+                let marker = src
+                    .marker
+                    .as_deref()
+                    .map(|m| Keywords::unescape(&Keywords::replace_keywords(&keywords, m)));
+                let merged = mode
+                    .apply(
+                        existing.as_deref(),
+                        &file.content,
+                        anchor.as_deref(),
+                        src.position(),
+                        marker.as_deref(),
+                    )
+                    .map_err(|message| crate::Error::PatchApply {
+                        path: file.path.clone(),
+                        message,
+                    })?;
+                std::borrow::Cow::Owned(merged)
+            } else {
+                // Non-file targets (stdout://, clipboard://, …) have nothing to
+                // merge into; write the rendered fragment as-is.
+                std::borrow::Cow::Borrowed(file.content.as_str())
+            };
+
+            target
+                .write(&content)
                 .map_err(|e| crate::Error::OutputWrite {
                     path: file.path.clone(),
                     message: e.to_string(),
@@ -1368,6 +1412,120 @@ Status: {{{{$.status[0]}}}}
         let ctx = Context::new().non_interactive().force(true);
         template.extract_with_context(&ctx).unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "clobbered");
+    }
+
+    #[test]
+    fn extract_append_mode_merges_into_existing_file_without_force() {
+        // The whole point of a patch mode: edit a file that already exists,
+        // without --force and without clobbering the original content.
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let target = dir.join("CLAUDE.md");
+        fs::write(&target, "# Existing rules\n- keep secrets safe\n").unwrap();
+
+        let template = Template::builder().with_file(
+            File::create(
+                target.to_string_lossy().to_string(),
+                "## Added by template\n- always run tests",
+            )
+            .with_mode(FileMode::Append),
+        );
+
+        // No force needed; append is non-destructive.
+        template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "# Existing rules\n- keep secrets safe\n## Added by template\n- always run tests"
+        );
+    }
+
+    #[test]
+    fn extract_block_mode_is_idempotent_across_runs() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let target = dir.join("CLAUDE.md");
+        fs::write(&target, "# Doc\n").unwrap();
+
+        let template = Template::builder().with_file(
+            File::create(target.to_string_lossy().to_string(), "- rule one")
+                .with_mode(FileMode::Block)
+                .with_marker("rules"),
+        );
+
+        let ctx = Context::new().non_interactive();
+        template.extract_with_context(&ctx).unwrap();
+        // Applying the same template again must not duplicate the block.
+        template.extract_with_context(&ctx).unwrap();
+
+        let content = fs::read_to_string(&target).unwrap();
+        assert_eq!(content.matches("spark:rules start").count(), 1);
+        assert!(content.contains("- rule one"));
+    }
+
+    #[test]
+    fn extract_insert_mode_resolves_anchor_placeholder() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let target = dir.join("config.toml");
+        fs::write(&target, "[core]\neditor = \"vim\"\n[net]\n").unwrap();
+
+        let template = Template::builder().with_file(
+            File::create(target.to_string_lossy().to_string(), "timeout = 30")
+                .with_mode(FileMode::Insert)
+                .with_anchor("[{{$SECTION}}]")
+                .with_position(Position::After),
+        );
+
+        let ctx = Context::new().with_var("SECTION", "net").non_interactive();
+        template.extract_with_context(&ctx).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "[core]\neditor = \"vim\"\n[net]\ntimeout = 30\n"
+        );
+    }
+
+    #[test]
+    fn extract_patch_mode_from_toml_applies_unified_diff() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let target = dir.join("VERSION");
+        fs::write(&target, "version = 1\n").unwrap();
+
+        let diff = "--- a\n+++ b\n@@ -1 +1 @@\n-version = 1\n+version = 2\n";
+        let template = Template::builder().with_file(
+            File::create(target.to_string_lossy().to_string(), diff).with_mode(FileMode::Patch),
+        );
+
+        template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&target).unwrap(), "version = 2\n");
+    }
+
+    #[test]
+    fn extract_patch_mode_parses_from_toml_template() {
+        // Confirms the `mode` field deserializes from a real TOML template.
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let target = dir.join("notes.txt");
+        fs::write(&target, "first\n").unwrap();
+
+        let toml_str = format!(
+            "[[files]]\npath = \"{}\"\nmode = \"append\"\ncontent = \"second\"\n",
+            target.to_string_lossy().replace('\\', "/")
+        );
+        let template: Template = toml::from_str(&toml_str).unwrap();
+        assert_eq!(template.files.as_ref().unwrap()[0].mode(), FileMode::Append);
+
+        template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "first\nsecond");
     }
 
     #[test]

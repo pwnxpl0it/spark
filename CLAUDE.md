@@ -38,6 +38,10 @@ Resolution is cumulative: a `:read` answered in file 1 is reused by file 2. Keyw
 
 Public entry points: `render` (in-memory, no side effects), `extract_with_context` (render + guards + write + git), and `extract(&mut HashMap)` (legacy wrapper that copies resolved values back into the caller's map). `extract_inner` runs two guards before writing anything: paths with `..` components fail with `Error::UnsafePath` unless `Context::allow_outside`, and existing destination files fail with `Error::FileExists` (or prompt when interactive) unless `Context::force`.
 
+### Write modes (`src/core/patch.rs`)
+
+Each `[[files]]` entry has an optional `mode` (`FileMode`, default `Overwrite`). Non-overwrite modes (`append`, `prepend`, `insert` with `anchor`/`position`, `block` with `marker`, `patch` as a unified diff via the `diffy` crate) merge the rendered content into the existing destination instead of replacing it. `FileMode::apply` is pure (existing + rendered → bytes to write); `extract_inner` reads the destination and calls it in the write loop. Patch-mode entries are **exempt from the `FileExists` guard** (they are meant to edit existing files) but still subject to the `..`/`UnsafePath` guard. `render`/`RenderedFile` stay mode-agnostic (path + content only); the write loop recovers each entry's mode by zipping `rendered` with `self.files`, which stay index-aligned. Patch modes apply only to filesystem targets; `stdout://`/`clipboard://` write the fragment as-is. `anchor`/`marker` go through keyword substitution.
+
 `Context` (`src/core/context.rs`) carries keywords, optional JSON, `interactive`, `on_missing`, `force`, and `allow_outside`. Non-interactive mode returns `Error::MissingVariable` instead of blocking on stdin.
 
 ### Output dispatch (`src/core/output_target.rs`)
