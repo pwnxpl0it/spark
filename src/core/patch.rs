@@ -96,29 +96,44 @@ impl FileMode {
     }
 }
 
+/// Detects the dominant line ending of `s`: `"\r\n"` when any CRLF is present,
+/// otherwise `"\n"`. Used so merges keep a file's existing newline convention
+/// instead of normalizing it.
+fn line_ending(s: &str) -> &'static str {
+    if s.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
 /// Appends `rendered` after `existing`, guaranteeing a newline between them.
+/// The separator follows `existing`'s line-ending convention.
 fn join_append(existing: &str, rendered: &str) -> String {
     if existing.is_empty() {
         return rendered.to_string();
     }
-    let mut out = String::with_capacity(existing.len() + rendered.len() + 1);
+    let nl = line_ending(existing);
+    let mut out = String::with_capacity(existing.len() + rendered.len() + nl.len());
     out.push_str(existing);
     if !existing.ends_with('\n') {
-        out.push('\n');
+        out.push_str(nl);
     }
     out.push_str(rendered);
     out
 }
 
 /// Prepends `rendered` before `existing`, guaranteeing a newline between them.
+/// The separator follows `existing`'s line-ending convention.
 fn join_prepend(existing: &str, rendered: &str) -> String {
     if existing.is_empty() {
         return rendered.to_string();
     }
-    let mut out = String::with_capacity(existing.len() + rendered.len() + 1);
+    let nl = line_ending(existing);
+    let mut out = String::with_capacity(existing.len() + rendered.len() + nl.len());
     out.push_str(rendered);
     if !rendered.ends_with('\n') {
-        out.push('\n');
+        out.push_str(nl);
     }
     out.push_str(existing);
     out
@@ -154,9 +169,12 @@ fn insert_at_anchor(
     out_lines.extend_from_slice(&rendered_lines);
     out_lines.extend_from_slice(&lines[insert_at..]);
 
-    let mut out = out_lines.join("\n");
+    // Rejoin with the file's existing newline style so a CRLF file is not
+    // silently normalized to LF (and vice versa).
+    let nl = line_ending(existing);
+    let mut out = out_lines.join(nl);
     if existing.ends_with('\n') {
-        out.push('\n');
+        out.push_str(nl);
     }
     Ok(out)
 }
@@ -293,6 +311,32 @@ mod tests {
             )
             .unwrap();
         assert_eq!(out, "alpha\nbeta\nomega\n");
+    }
+
+    #[test]
+    fn insert_preserves_crlf_line_endings() {
+        let existing = "[core]\r\neditor = \"vim\"\r\n[net]\r\n";
+        let out = FileMode::Insert
+            .apply(
+                Some(existing),
+                "timeout = 30",
+                Some("[net]"),
+                Position::After,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            out,
+            "[core]\r\neditor = \"vim\"\r\n[net]\r\ntimeout = 30\r\n"
+        );
+    }
+
+    #[test]
+    fn append_preserves_crlf_separator() {
+        let out = FileMode::Append
+            .apply(Some("a\r\nb"), "c", None, Position::After, None)
+            .unwrap();
+        assert_eq!(out, "a\r\nb\r\nc");
     }
 
     #[test]
