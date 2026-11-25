@@ -1088,6 +1088,29 @@ return M
 
 ```
 
+### Presetting `[options]` at generation time
+
+`spark init` can embed an `[options]` table in the generated template so you
+don't have to hand-edit it afterwards:
+
+| flag | effect |
+|------|--------|
+| `--git` | sets `git = true` |
+| `--liquid` | sets `use_liquid = true` |
+| `--project-root VALUE` | sets `project_root` (e.g. `--project-root '{{$PROJECTNAME}}'`) |
+
+```console
+$ spark init --git --project-root '{{$PROJECTNAME}}'
+Creating Template: test123.toml
+
+$ head -4 test123.toml
+[options]
+git = true
+project_root = "{{$PROJECTNAME}}"
+```
+
+A plain `spark init` with no option flags omits the `[options]` table entirely.
+
 ## Config Keywords ⚙️
 You can have your own Keywords for spark to replace with desired values!
 Spark finds them stored in `$HOME/.config/spark/config.toml` or the config path you specified using `-c`/`--config`.

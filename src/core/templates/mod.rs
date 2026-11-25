@@ -137,9 +137,26 @@ impl Template {
         Self::generate_from(Path::new("./"), dest)
     }
 
+    /// Generates a template at `dest` from the current directory, writing the
+    /// supplied `[options]` into it (`None` omits the `[options]` table).
+    pub fn generate_with(dest: &str, options: Option<Options>) -> std::result::Result<(), String> {
+        Self::generate_from_with(Path::new("./"), dest, options)
+    }
+
     /// Generates a template at `dest` from every file under `source`.
     /// Paths in the template are relative to `source`.
     pub fn generate_from(source: &Path, dest: &str) -> std::result::Result<(), String> {
+        Self::generate_from_with(source, dest, None)
+    }
+
+    /// Generates a template at `dest` from every file under `source`, writing
+    /// the supplied `[options]` into it (`None` omits the `[options]` table).
+    /// Paths in the template are relative to `source`.
+    pub fn generate_from_with(
+        source: &Path,
+        dest: &str,
+        options: Option<Options>,
+    ) -> std::result::Result<(), String> {
         let dest_abs = fs::canonicalize(dest).ok();
         let prefix = source.to_string_lossy().to_string();
         let files: Vec<File> = list_files(source)
@@ -176,7 +193,7 @@ impl Template {
         let template = Self {
             info: None,
             files: Some(files),
-            options: None,
+            options,
         };
 
         let toml_string = toml::to_string_pretty(&template)
@@ -1439,6 +1456,43 @@ Status: {{{{$.status[0]}}}}
         assert!(generated.contains("hello {{$$WORLD}}"), "{generated}");
         let parsed: Template = generated.parse().unwrap();
         assert_eq!(parsed.files.unwrap()[0].path, "tpl.txt");
+    }
+
+    #[test]
+    fn generate_from_with_writes_supplied_options() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("main.rs"), "fn main() {}").unwrap();
+
+        let dest = dir.join("out.toml");
+        let options = Options {
+            git: true,
+            use_liquid: Some(true),
+            json_data: None,
+            project_root: "{{$PROJECTNAME}}".into(),
+        };
+        Template::generate_from_with(&dir, &dest.to_string_lossy(), Some(options)).unwrap();
+
+        let parsed: Template = fs::read_to_string(&dest).unwrap().parse().unwrap();
+        let options = parsed.options.expect("generated [options] table");
+        assert!(options.git);
+        assert_eq!(options.use_liquid, Some(true));
+        assert_eq!(options.project_root, "{{$PROJECTNAME}}");
+    }
+
+    #[test]
+    fn generate_from_without_options_omits_table() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("main.rs"), "fn main() {}").unwrap();
+
+        let dest = dir.join("out.toml");
+        Template::generate_from(&dir, &dest.to_string_lossy()).unwrap();
+
+        let generated = fs::read_to_string(&dest).unwrap();
+        assert!(!generated.contains("[options]"), "{generated}");
     }
 
     #[test]

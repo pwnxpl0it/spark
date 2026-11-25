@@ -65,7 +65,17 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Creates a template for the current directory
-    Init,
+    Init {
+        /// Set `git = true` in the generated `[options]`
+        #[arg(long)]
+        git: bool,
+        /// Set `use_liquid = true` in the generated `[options]`
+        #[arg(long)]
+        liquid: bool,
+        /// Set `project_root` in the generated `[options]`
+        #[arg(long, value_name = "VALUE")]
+        project_root: Option<String>,
+    },
     /// Lists the templates available in the templates directory
     List,
 }
@@ -137,8 +147,40 @@ mod tests {
     #[test]
     fn parses_init_subcommand() {
         let cli = Cli::try_parse_from(["spark", "init"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Init)));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Init {
+                git: false,
+                liquid: false,
+                project_root: None,
+            })
+        ));
         assert!(cli.template.is_none());
+    }
+
+    #[test]
+    fn parses_init_with_options() {
+        let cli = Cli::try_parse_from([
+            "spark",
+            "init",
+            "--git",
+            "--liquid",
+            "--project-root",
+            "{{$PROJECTNAME}}",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Init {
+                git,
+                liquid,
+                project_root,
+            }) => {
+                assert!(git);
+                assert!(liquid);
+                assert_eq!(project_root.as_deref(), Some("{{$PROJECTNAME}}"));
+            }
+            other => panic!("expected Init, got {other:?}"),
+        }
     }
 
     #[test]
