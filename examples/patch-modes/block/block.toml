@@ -1,0 +1,18 @@
+[info]
+name = "managed-block"
+description = "Maintain an idempotent, marker-delimited block in CLAUDE.md"
+
+# `block` wraps the content in `<!-- spark:<marker> start/end -->` sentinels.
+# Run this template TWICE: the block is replaced in place, never duplicated,
+# and the hand-written text around it is left alone. Try bumping --from each run:
+#   spark ./block.toml --from "RULESET=v1"
+#   spark ./block.toml --from "RULESET=v2"   # same single block, updated
+[[files]]
+path = "CLAUDE.md"
+mode = "block"
+marker = "agent-rules"
+content = """
+## Managed agent rules ({{$RULESET}})
+- Never commit secrets.
+- Keep functions small.
+"""

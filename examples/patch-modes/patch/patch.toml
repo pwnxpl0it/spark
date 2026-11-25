@@ -1,0 +1,20 @@
+[info]
+name = "apply-diff"
+description = "Apply a unified diff to an existing file"
+
+# `patch` treats `content` as a unified diff and applies it to the file at
+# `path`. If the diff does not apply (context no longer matches), spark reports
+# an error and writes nothing. This one bumps the version from 1.0.0 to 2.0.0.
+[[files]]
+path = "project.toml"
+mode = "patch"
+content = """
+--- a
++++ b
+@@ -1,4 +1,4 @@
+ [package]
+ name = "demo"
+-version = "1.0.0"
++version = "2.0.0"
+ edition = "2021"
+"""

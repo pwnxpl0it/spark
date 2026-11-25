@@ -1,0 +1,13 @@
+[info]
+name = "prepend-license"
+description = "Prepend a license header to an existing source file"
+
+# `prepend` inserts the content at the START of the file, keeping the rest
+# untouched. Supply the author with --from, e.g.
+#   spark ./prepend.toml --from "AUTHOR=Mohamed Tarek"
+[[files]]
+path = "main.rs"
+mode = "prepend"
+content = """// Copyright {{$YYYY}} {{$AUTHOR}}. All rights reserved.
+// SPDX-License-Identifier: MIT
+"""

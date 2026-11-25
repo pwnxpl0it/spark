@@ -656,6 +656,10 @@ Library callers set the mode with the `File` builder:
 `.with_anchor("## Conventions").with_position(Position::After)`, or
 `.with_marker("agent-rules")`.
 
+Ready-to-run templates for every mode live in
+[`examples/patch-modes/`](examples/patch-modes/) — each folder has a seed file
+and a template you can run against it.
+
 ## Output directory 📂
 
 By default files are created relative to the current directory. Point Spark somewhere else with `--output-dir` / `-o`; the directory is created if needed and relative `[[files]]` paths are resolved from it. The template name and `--json` path are still looked up relative to where you ran the command.

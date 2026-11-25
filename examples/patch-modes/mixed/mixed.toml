@@ -1,0 +1,20 @@
+[info]
+name = "mixed-modes"
+description = "Several patch entries in one template, applied all-or-nothing"
+
+# One template can mix modes across files. Every merge is computed before any
+# file is written, so if one entry failed, none would be written.
+
+# 1) Append a rule to an existing CLAUDE.md.
+[[files]]
+path = "CLAUDE.md"
+mode = "append"
+content = "- Time out idle connections after {{$TIMEOUT}}s."
+
+# 2) Insert a key right after the [server] section header.
+[[files]]
+path = "settings.toml"
+mode = "insert"
+anchor = "[server]"
+position = "after"
+content = "port = 8080"
