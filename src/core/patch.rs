@@ -139,8 +139,10 @@ fn join_prepend(existing: &str, rendered: &str) -> String {
     out
 }
 
-/// Inserts `rendered` as whole lines before/after the first line that contains
-/// `anchor`. Falls back to an append when the anchor is absent.
+/// Inserts `rendered` as whole lines before/after the **first** line that
+/// contains `anchor`. When the anchor appears on more than one line, only the
+/// first match is used (by design — a single, predictable insertion point).
+/// Falls back to an append when the anchor is absent, so content is never lost.
 fn insert_at_anchor(
     existing: &str,
     rendered: &str,
@@ -337,6 +339,16 @@ mod tests {
             .apply(Some("a\r\nb"), "c", None, Position::After, None)
             .unwrap();
         assert_eq!(out, "a\r\nb\r\nc");
+    }
+
+    #[test]
+    fn insert_uses_only_the_first_matching_anchor() {
+        let existing = "marker\nmiddle\nmarker\n";
+        let out = FileMode::Insert
+            .apply(Some(existing), "X", Some("marker"), Position::After, None)
+            .unwrap();
+        // Inserted only after the first "marker", not the second.
+        assert_eq!(out, "marker\nX\nmiddle\nmarker\n");
     }
 
     #[test]

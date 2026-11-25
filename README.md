@@ -581,7 +581,7 @@ the whole point (see [Existing files](#existing-files-)).
 | `overwrite`  | Replace the file with the rendered content (default — same as omitting `mode`).           | —            |
 | `append`     | Add the rendered content to the **end** of the file (creates it if missing).              | —            |
 | `prepend`    | Add the rendered content to the **start** of the file.                                    | —            |
-| `insert`     | Insert the content on the line(s) before/after the first line containing `anchor`. Falls back to `append` when the anchor is absent. | `anchor`, `position` |
+| `insert`     | Insert the content on the line(s) before/after the **first** line containing `anchor` (only the first match is used if it repeats). Falls back to `append` when the anchor is absent. | `anchor`, `position` |
 | `block`      | Maintain an idempotent, marker-delimited block. Re-applying replaces the block in place instead of duplicating it. | `marker` |
 | `patch`      | Apply the rendered content to the file as a **unified diff**.                             | —            |
 
