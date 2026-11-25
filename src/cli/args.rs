@@ -68,6 +68,9 @@ pub enum Commands {
     Init,
     /// Lists the templates available in the templates directory
     List,
+    /// Reverses the most recent extraction: deletes files Spark created and
+    /// restores files it overwrote or patched
+    Undo,
 }
 
 impl Cli {
@@ -177,5 +180,12 @@ mod tests {
     fn from_flag_is_repeatable() {
         let cli = Cli::try_parse_from(["spark", "demo", "--from", "a=1", "--from", "b=2"]).unwrap();
         assert_eq!(cli.keywords, vec!["a=1".to_string(), "b=2".to_string()]);
+    }
+
+    #[test]
+    fn parses_undo_subcommand() {
+        let cli = Cli::try_parse_from(["spark", "undo"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::Undo)));
+        assert!(cli.template.is_none());
     }
 }

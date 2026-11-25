@@ -1,7 +1,7 @@
 use crate::config::*;
 use colored::*;
 use dotenvy::dotenv;
-use spark::{Context, Error, Keywords, MissingPolicy, Template};
+use spark::{Context, Error, Keywords, MissingPolicy, Template, UndoLog};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,6 +35,7 @@ fn run() -> spark::Result<()> {
     match (&args.command, args.template.as_deref()) {
         (Some(Commands::Init), _) => run_init(),
         (Some(Commands::List), _) => run_list(&config),
+        (Some(Commands::Undo), _) => run_undo(&config),
         (None, Some(template)) => run_template(&args, &config, template, keywords),
         (None, None) => Err(Error::Custom(format!(
             "no template specified, see {}",
@@ -248,7 +249,59 @@ fn run_template(
             .map_err(|e| Error::Custom(format!("cannot enter '{}': {}", out.display(), e)))?;
     }
 
-    parsed_template.extract_with_context(&context)?;
+    let (_rendered, undo) = parsed_template.extract_with_undo(&context)?;
+
+    // Record how to reverse this extraction so `spark undo` can roll it back.
+    // A failure to write the manifest must not fail the generation itself.
+    if !undo.is_empty() {
+        let manifest = config.undo_manifest_path();
+        match undo.save(&manifest) {
+            Ok(()) => eprintln!(
+                "{}: run {} to revert this",
+                "undo".blue(),
+                "spark undo".bold().green()
+            ),
+            Err(e) => eprintln!(
+                "{}: could not record undo information: {}",
+                "warning".yellow(),
+                e
+            ),
+        }
+    }
+    Ok(())
+}
+
+/// Reverses the most recent extraction recorded in the undo manifest.
+fn run_undo(config: &Config) -> spark::Result<()> {
+    let manifest = config.undo_manifest_path();
+    if !manifest.is_file() {
+        return Err(Error::Custom(
+            "nothing to undo (no template has been generated yet)".into(),
+        ));
+    }
+
+    let log = UndoLog::load(&manifest)
+        .map_err(|e| Error::Custom(format!("cannot read undo manifest: {e}")))?;
+    let report = log.apply();
+
+    for err in &report.errors {
+        eprintln!("{}: {}", "warning".yellow(), err);
+    }
+    eprintln!(
+        "{}: restored {}, removed {} file(s)",
+        "undo".blue(),
+        report.restored,
+        report.deleted
+    );
+
+    // Consume the manifest so a second `undo` is a no-op rather than a replay.
+    if let Err(e) = fs::remove_file(&manifest) {
+        eprintln!(
+            "{}: could not clear undo manifest: {}",
+            "warning".yellow(),
+            e
+        );
+    }
     Ok(())
 }
 

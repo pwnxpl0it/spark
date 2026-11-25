@@ -358,11 +358,12 @@ impl Template {
     }
 
     /// Renders, writes every file to its sink, and runs the git hook.
-    /// Returns rendered files plus the fully-resolved keyword map.
+    /// Returns rendered files, the fully-resolved keyword map, and an
+    /// [`UndoLog`] recording every filesystem write so it can be reversed.
     fn extract_inner(
         &self,
         context: &Context,
-    ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
+    ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>, UndoLog)> {
         let (rendered, keywords, options) = self.render_inner(context)?;
         // `rendered` is produced from `self.files` in order, so index-for-index
         // the two line up; zip them to recover each entry's write mode.
@@ -477,29 +478,72 @@ impl Template {
             }
         }
 
-        // Phase 2 — commit the planned writes now that every merge succeeded.
+        // Phase 2 — commit the planned writes now that every merge succeeded,
+        // snapshotting each file target's prior content first so the extraction
+        // can be reversed later.
+        let mut undo = UndoLog::new();
         for (target, content, display) in file_plan.values().chain(sink_plan.iter()) {
+            let snapshot = if let Some(path) = target.expanded_path() {
+                // Record an absolute path so undo works from any directory,
+                // even for a file that does not exist yet.
+                let abs = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    std::env::current_dir()
+                        .map(|cwd| cwd.join(&path))
+                        .unwrap_or_else(|_| path.clone())
+                };
+                match fs::read_to_string(&path) {
+                    Ok(existing) => Some((abs, Some(existing))),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some((abs, None)),
+                    // An unreadable existing file (e.g. non-UTF-8) cannot be
+                    // safely snapshotted; leave it untracked rather than risk a
+                    // destructive restore on undo.
+                    Err(_) => None,
+                }
+            } else {
+                // Non-file sinks (stdout://, clipboard://, …) have nothing to undo.
+                None
+            };
+
             target
                 .write(content)
                 .map_err(|e| crate::Error::OutputWrite {
                     path: display.clone(),
                     message: e.to_string(),
                 })?;
+
+            if let Some((path, previous)) = snapshot {
+                undo.push(UndoEntry::new(path, previous));
+            }
         }
 
         if self.options.is_some() {
             options.handle();
         }
 
-        Ok((rendered, keywords))
+        Ok((rendered, keywords, undo))
     }
 
     /// Renders the template and writes all files to their target sinks (filesystem,
     /// `stdout://`, `stderr://`, or `clipboard://`), handling git repository initialization
     /// if enabled in template options.
     pub fn extract_with_context(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
-        let (rendered, _keywords) = self.extract_inner(context)?;
+        let (rendered, _keywords, _undo) = self.extract_inner(context)?;
         Ok(rendered)
+    }
+
+    /// Like [`Template::extract_with_context`], but also returns an [`UndoLog`]
+    /// capturing every filesystem write (each file's path and its prior
+    /// content) so the extraction can later be reversed with
+    /// [`UndoLog::apply`]. Non-file sinks (`stdout://`, `clipboard://`, …) are
+    /// not recorded.
+    pub fn extract_with_undo(
+        &self,
+        context: &Context,
+    ) -> crate::Result<(Vec<RenderedFile>, UndoLog)> {
+        let (rendered, _keywords, undo) = self.extract_inner(context)?;
+        Ok((rendered, undo))
     }
 
     /// Legacy extraction method for backwards compatibility with CLI and tests.
@@ -512,7 +556,7 @@ impl Template {
         keywords: &mut HashMap<String, String>,
     ) -> std::result::Result<(), String> {
         let context = Context::from(keywords.clone());
-        let (_rendered, resolved_keywords) =
+        let (_rendered, resolved_keywords, _undo) =
             self.extract_inner(&context).map_err(|e| e.to_string())?;
 
         for (k, v) in resolved_keywords {
@@ -1462,6 +1506,53 @@ Status: {{{{$.status[0]}}}}
         let ctx = Context::new().non_interactive().force(true);
         template.extract_with_context(&ctx).unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "clobbered");
+    }
+
+    #[test]
+    fn extract_with_undo_reverses_creation_and_overwrite() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        fs::create_dir_all(&dir).unwrap();
+
+        // One file already exists (will be overwritten), one is brand new.
+        let existing = dir.join("existing.txt");
+        let created = dir.join("nested").join("created.txt");
+        fs::write(&existing, "ORIGINAL").unwrap();
+
+        let template = Template::builder()
+            .with_file(File::create(
+                existing.to_string_lossy().to_string(),
+                "REPLACED",
+            ))
+            .with_file(File::create(
+                created.to_string_lossy().to_string(),
+                "brand new",
+            ));
+
+        let ctx = Context::new().non_interactive().force(true);
+        let (_rendered, undo) = template.extract_with_undo(&ctx).unwrap();
+
+        // Both writes happened.
+        assert_eq!(fs::read_to_string(&existing).unwrap(), "REPLACED");
+        assert_eq!(fs::read_to_string(&created).unwrap(), "brand new");
+        assert_eq!(undo.entries.len(), 2);
+
+        // Undo restores the overwritten file and deletes the created one.
+        let report = undo.apply();
+        assert_eq!(report.restored, 1);
+        assert_eq!(report.deleted, 1);
+        assert!(report.errors.is_empty());
+        assert_eq!(fs::read_to_string(&existing).unwrap(), "ORIGINAL");
+        assert!(!created.exists());
+    }
+
+    #[test]
+    fn extract_with_undo_ignores_non_file_sinks() {
+        let template = Template::builder().with_file(File::create("stdout://", "just printed"));
+        let (_rendered, undo) = template
+            .extract_with_undo(&Context::new().non_interactive())
+            .unwrap();
+        assert!(undo.is_empty(), "stdout:// has nothing to undo");
     }
 
     #[test]
