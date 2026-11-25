@@ -2,6 +2,7 @@ use crate::output_target::OutputTarget;
 use crate::utils::*;
 use crate::*;
 use colored::Colorize;
+use indexmap::IndexMap;
 use promptly::prompt;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::Path};
@@ -405,59 +406,83 @@ impl Template {
             }
         }
 
+        // Phase 1 — plan every write without touching disk, so a failure in any
+        // patch merge aborts before a single file is written (the same
+        // "validate everything first" guarantee overwrite mode already had).
+        // File targets are keyed by expanded path so that several entries
+        // patching the same file build on each other in memory and are written
+        // once; stdout/stderr/clipboard writes are planned in order.
+        let mut file_plan: IndexMap<String, (OutputTarget, String, String)> = IndexMap::new();
+        let mut sink_plan: Vec<(OutputTarget, String, String)> = Vec::new();
+
         for (file, src) in rendered.iter().zip(sources.iter()) {
             let target = OutputTarget::from_path(&file.path);
             let mode = src.mode();
 
-            let content: std::borrow::Cow<str> = if !mode.reads_existing() {
-                std::borrow::Cow::Borrowed(file.content.as_str())
-            } else if let Some(path) = target.expanded_path() {
-                // Patch modes merge into the current destination. Anchor/marker
-                // may carry placeholders, so resolve them with the final keywords.
-                // A missing file is a valid "no existing content" input, but any
-                // other read error (permissions, bad UTF-8, …) must surface —
-                // treating it as empty would silently discard the file.
-                let existing = match fs::read_to_string(&path) {
-                    Ok(contents) => Some(contents),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                    Err(e) => {
-                        return Err(crate::Error::PatchApply {
+            match target.expanded_path() {
+                Some(path) => {
+                    let key = path.to_string_lossy().into_owned();
+                    let content = if !mode.reads_existing() {
+                        file.content.clone()
+                    } else {
+                        // Base content: a merge already planned for this path (so
+                        // repeated patches on one file accumulate), else what is on
+                        // disk. A missing file is valid "no content"; any other read
+                        // error surfaces rather than silently discarding the file.
+                        let existing = if let Some((_, planned, _)) = file_plan.get(&key) {
+                            Some(planned.clone())
+                        } else {
+                            match fs::read_to_string(&path) {
+                                Ok(contents) => Some(contents),
+                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                                Err(e) => {
+                                    return Err(crate::Error::PatchApply {
+                                        path: file.path.clone(),
+                                        message: format!(
+                                            "cannot read existing file to patch it: {e}"
+                                        ),
+                                    });
+                                }
+                            }
+                        };
+                        // Anchor/marker may carry placeholders; resolve with the
+                        // final keyword map.
+                        let anchor = src
+                            .anchor
+                            .as_deref()
+                            .map(|a| Keywords::unescape(&Keywords::replace_keywords(&keywords, a)));
+                        let marker = src
+                            .marker
+                            .as_deref()
+                            .map(|m| Keywords::unescape(&Keywords::replace_keywords(&keywords, m)));
+                        mode.apply(
+                            existing.as_deref(),
+                            &file.content,
+                            anchor.as_deref(),
+                            src.position(),
+                            marker.as_deref(),
+                        )
+                        .map_err(|message| crate::Error::PatchApply {
                             path: file.path.clone(),
-                            message: format!("cannot read existing file to patch it: {e}"),
-                        });
-                    }
-                };
-                let anchor = src
-                    .anchor
-                    .as_deref()
-                    .map(|a| Keywords::unescape(&Keywords::replace_keywords(&keywords, a)));
-                let marker = src
-                    .marker
-                    .as_deref()
-                    .map(|m| Keywords::unescape(&Keywords::replace_keywords(&keywords, m)));
-                let merged = mode
-                    .apply(
-                        existing.as_deref(),
-                        &file.content,
-                        anchor.as_deref(),
-                        src.position(),
-                        marker.as_deref(),
-                    )
-                    .map_err(|message| crate::Error::PatchApply {
-                        path: file.path.clone(),
-                        message,
-                    })?;
-                std::borrow::Cow::Owned(merged)
-            } else {
-                // Non-file targets (stdout://, clipboard://, …) have nothing to
-                // merge into; write the rendered fragment as-is.
-                std::borrow::Cow::Borrowed(file.content.as_str())
-            };
+                            message,
+                        })?
+                    };
+                    file_plan.insert(key, (target, content, file.path.clone()));
+                }
+                None => {
+                    // Non-file targets (stdout://, clipboard://, …) have nothing to
+                    // merge into; write the rendered fragment as-is.
+                    sink_plan.push((target, file.content.clone(), file.path.clone()));
+                }
+            }
+        }
 
+        // Phase 2 — commit the planned writes now that every merge succeeded.
+        for (target, content, display) in file_plan.values().chain(sink_plan.iter()) {
             target
-                .write(&content)
+                .write(content)
                 .map_err(|e| crate::Error::OutputWrite {
-                    path: file.path.clone(),
+                    path: display.clone(),
                     message: e.to_string(),
                 })?;
         }
@@ -1490,6 +1515,53 @@ Status: {{{{$.status[0]}}}}
             matches!(err, Error::PatchApply { .. }),
             "expected PatchApply, got {err:?}"
         );
+    }
+
+    #[test]
+    fn extract_patch_failure_leaves_no_files_written() {
+        // Atomicity: a failing patch merge must abort before any earlier file in
+        // the same template is written to disk.
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let fresh = dir.join("fresh.txt");
+        let broken = dir.join("broken.txt");
+
+        let template = Template::builder()
+            .with_file(File::create(fresh.to_string_lossy().to_string(), "written"))
+            .with_file(
+                // insert with no anchor fails during the merge phase.
+                File::create(broken.to_string_lossy().to_string(), "x").with_mode(FileMode::Insert),
+            );
+
+        let err = template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap_err();
+        assert!(matches!(err, Error::PatchApply { .. }), "got {err:?}");
+        assert!(
+            !fresh.exists(),
+            "no file should be written when a later merge fails"
+        );
+    }
+
+    #[test]
+    fn extract_multiple_patches_to_same_file_accumulate() {
+        // Two append entries targeting the same path must build on each other,
+        // not have the second clobber the first.
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let target = dir.join("log.txt");
+        fs::write(&target, "base\n").unwrap();
+
+        let path = target.to_string_lossy().to_string();
+        let template = Template::builder()
+            .with_file(File::create(path.clone(), "one").with_mode(FileMode::Append))
+            .with_file(File::create(path, "two").with_mode(FileMode::Append));
+
+        template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&target).unwrap(), "base\none\ntwo");
     }
 
     #[test]
