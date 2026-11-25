@@ -1111,6 +1111,26 @@ project_root = "{{$PROJECTNAME}}"
 
 A plain `spark init` with no option flags omits the `[options]` table entirely.
 
+### Generating from a GitHub repo
+
+Pass `--from-github <owner/repo>` to build the template from a GitHub repository
+instead of the current directory. Spark shallow-clones the repo into a temporary
+directory (using your installed `git`, so no extra dependencies and your
+existing auth works for private repos), captures its files, and writes
+`<repo>.toml`:
+
+```console
+$ spark init --from-github pwnxpl0it/spark
+Cloning: https://github.com/pwnxpl0it/spark.git
+Creating Template: spark.toml
+```
+
+- Add a branch or tag with `@ref`: `spark init --from-github owner/repo@v2.0.1`.
+- The repo's `.git` directory is never captured, and its `.gitignore` is
+  honored, so build artifacts stay out of the template.
+- The `--git`, `--liquid`, and `--project-root` option flags above apply here
+  too, so you can preset `[options]` on the generated template in the same run.
+
 ## Config Keywords ⚙️
 You can have your own Keywords for spark to replace with desired values!
 Spark finds them stored in `$HOME/.config/spark/config.toml` or the config path you specified using `-c`/`--config`.

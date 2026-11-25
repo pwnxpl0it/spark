@@ -75,6 +75,10 @@ pub enum Commands {
         /// Set `project_root` in the generated `[options]`
         #[arg(long, value_name = "VALUE")]
         project_root: Option<String>,
+        /// Generate the template from a GitHub repo instead of the current
+        /// directory. Accepts `owner/repo` or `owner/repo@ref` (branch or tag).
+        #[arg(long, value_name = "OWNER/REPO")]
+        from_github: Option<String>,
     },
     /// Lists the templates available in the templates directory
     List,
@@ -153,6 +157,7 @@ mod tests {
                 git: false,
                 liquid: false,
                 project_root: None,
+                from_github: None,
             })
         ));
         assert!(cli.template.is_none());
@@ -174,10 +179,23 @@ mod tests {
                 git,
                 liquid,
                 project_root,
+                from_github,
             }) => {
                 assert!(git);
                 assert!(liquid);
                 assert_eq!(project_root.as_deref(), Some("{{$PROJECTNAME}}"));
+                assert!(from_github.is_none());
+            }
+            other => panic!("expected Init, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_init_from_github() {
+        let cli = Cli::try_parse_from(["spark", "init", "--from-github", "owner/repo@v2"]).unwrap();
+        match cli.command {
+            Some(Commands::Init { from_github, .. }) => {
+                assert_eq!(from_github.as_deref(), Some("owner/repo@v2"));
             }
             other => panic!("expected Init, got {other:?}"),
         }
