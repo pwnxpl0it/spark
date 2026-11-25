@@ -170,9 +170,13 @@ fn block_markers(marker: Option<&str>) -> (String, String) {
     )
 }
 
-/// Maintains an idempotent, marker-delimited block. If both markers are present
-/// (and ordered) the region between them is replaced; otherwise the block is
-/// appended.
+/// Maintains an idempotent, marker-delimited block. Marker combinations are
+/// handled explicitly so a corrupt managed section is reported rather than
+/// silently duplicated:
+///
+/// - neither marker present → append a fresh block;
+/// - exactly one matched pair in order → replace the region between them;
+/// - a lone marker, reversed order, or multiple pairs → error.
 fn block(
     existing: &str,
     rendered: &str,
@@ -182,21 +186,32 @@ fn block(
     let body = rendered.trim_end_matches('\n');
     let fresh_block = format!("{start}\n{body}\n{end}");
 
-    if let (Some(s), Some(e)) = (existing.find(&start), existing.find(&end)) {
-        if s < e {
-            let end_idx = e + end.len();
-            let mut out = String::with_capacity(existing.len() + fresh_block.len());
-            out.push_str(&existing[..s]);
-            out.push_str(&fresh_block);
-            out.push_str(&existing[end_idx..]);
-            return Ok(out);
-        }
-        return Err(format!(
-            "block markers are out of order in the destination (`{end}` appears before `{start}`)"
-        ));
-    }
+    let start_count = existing.matches(start.as_str()).count();
+    let end_count = existing.matches(end.as_str()).count();
 
-    Ok(join_append(existing, &fresh_block))
+    match (start_count, end_count) {
+        (0, 0) => Ok(join_append(existing, &fresh_block)),
+        (1, 1) => {
+            let s = existing.find(start.as_str()).unwrap();
+            let e = existing.find(end.as_str()).unwrap();
+            if s < e {
+                let end_idx = e + end.len();
+                let mut out = String::with_capacity(existing.len() + fresh_block.len());
+                out.push_str(&existing[..s]);
+                out.push_str(&fresh_block);
+                out.push_str(&existing[end_idx..]);
+                Ok(out)
+            } else {
+                Err(format!(
+                    "block markers are out of order in the destination (`{end}` appears before `{start}`)"
+                ))
+            }
+        }
+        _ => Err(format!(
+            "destination has malformed block markers (found {start_count} `{start}` / \
+             {end_count} `{end}`; expected a single matched pair)"
+        )),
+    }
 }
 
 /// Applies `rendered` to `existing` as a unified diff via `diffy`.
@@ -327,6 +342,45 @@ mod tests {
             "intro\n<!-- spark:r start -->\nv2\n<!-- spark:r end -->"
         );
         assert_eq!(second.matches("spark:r start").count(), 1);
+    }
+
+    #[test]
+    fn block_errors_on_lone_start_marker() {
+        let existing = "before\n<!-- spark:x start -->\norphan\n";
+        let err = FileMode::Block
+            .apply(Some(existing), "new", None, Position::After, Some("x"))
+            .unwrap_err();
+        assert!(err.contains("malformed"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn block_errors_on_lone_end_marker() {
+        let existing = "before\n<!-- spark:x end -->\n";
+        let err = FileMode::Block
+            .apply(Some(existing), "new", None, Position::After, Some("x"))
+            .unwrap_err();
+        assert!(err.contains("malformed"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn block_errors_on_multiple_pairs() {
+        let existing = concat!(
+            "<!-- spark:x start -->\na\n<!-- spark:x end -->\n",
+            "<!-- spark:x start -->\nb\n<!-- spark:x end -->\n",
+        );
+        let err = FileMode::Block
+            .apply(Some(existing), "new", None, Position::After, Some("x"))
+            .unwrap_err();
+        assert!(err.contains("malformed"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn block_errors_on_reversed_markers() {
+        let existing = "<!-- spark:x end -->\nmiddle\n<!-- spark:x start -->\n";
+        let err = FileMode::Block
+            .apply(Some(existing), "new", None, Position::After, Some("x"))
+            .unwrap_err();
+        assert!(err.contains("out of order"), "unexpected message: {err}");
     }
 
     #[test]
