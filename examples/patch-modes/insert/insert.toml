@@ -1,0 +1,14 @@
+[info]
+name = "insert-after-anchor"
+description = "Insert a key right after an anchor line"
+
+# `insert` places the content before/after the first line that contains the
+# anchor. The anchor itself may use placeholders — pass the section with --from:
+#   spark ./insert.toml --from "SECTION=net"
+# If the anchor is not found, insert falls back to appending at the end.
+[[files]]
+path = "config.toml"
+mode = "insert"
+anchor = "[{{$SECTION}}]"
+position = "after"         # "before" | "after" (default: after)
+content = "timeout = 30"

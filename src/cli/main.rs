@@ -232,7 +232,10 @@ fn run_template(
     }
     if args.dry_run {
         let rendered = parsed_template.render(&context)?;
-        print_dry_run(&rendered);
+        print_dry_run(
+            &rendered,
+            parsed_template.files.as_deref().unwrap_or_default(),
+        );
         return Ok(());
     }
 
@@ -250,10 +253,24 @@ fn run_template(
 }
 
 /// Prints each rendered file as a `==> path` header followed by its content.
-fn print_dry_run(rendered: &[spark::RenderedFile]) {
+///
+/// For non-overwrite entries the rendered content is the patch *fragment*
+/// (what gets merged), not the final file, so the mode is shown alongside the
+/// path to make that clear.
+fn print_dry_run(rendered: &[spark::RenderedFile], sources: &[spark::File]) {
     eprintln!("{}", "dry run: nothing will be written".yellow().bold());
-    for file in rendered {
-        println!("{} {}", "==>".blue().bold(), file.path.bold());
+    for (idx, file) in rendered.iter().enumerate() {
+        let mode = sources.get(idx).map(|s| s.mode()).unwrap_or_default();
+        if mode == spark::FileMode::Overwrite {
+            println!("{} {}", "==>".blue().bold(), file.path.bold());
+        } else {
+            println!(
+                "{} {} {}",
+                "==>".blue().bold(),
+                file.path.bold(),
+                format!("({mode:?} fragment)").yellow()
+            );
+        }
         println!("{}", file.content);
     }
 }

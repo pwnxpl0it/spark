@@ -19,6 +19,7 @@ path="src/cli/main.rs"
 chrono = "0.4.34"
 clap = { version = "4", features = ["derive"] }
 colored = "2.0.0"
+diffy = "0.4"
 dotenvy = "0.15"
 indexmap = "2.2.6"
 jaq-interpret = "1.5"

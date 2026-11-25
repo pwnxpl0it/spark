@@ -1,0 +1,16 @@
+[info]
+name = "append-rules"
+description = "Append shared agent rules to an existing CLAUDE.md"
+
+# `append` adds the content to the END of the file. The file must already
+# exist here (it does — see CLAUDE.md); append creates it if it does not.
+# No --force is needed: patch modes are meant to edit existing files.
+[[files]]
+path = "CLAUDE.md"
+mode = "append"
+content = """
+
+## Shared rules (added by template)
+- Always run `cargo test` before committing.
+- Prefer `error:` / `help:` style CLI messages.
+"""

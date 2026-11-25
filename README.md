@@ -31,6 +31,7 @@ Spark is a powerful and flexible project initializer designed to simplify your w
 - [Environment Variables ⚙️](#environment-variables-%EF%B8%8F)
 - [Template Options](#template-options)
 - [Output Targets 🎯](#output-targets-)
+- [Patching existing files ✍️](#patching-existing-files-)
 - [Git Integration 🐙](#git-integration-)
 - [Example Templates](#example-templates)
   - [Neovim Plugin](#neovim-plugin)
@@ -566,6 +567,99 @@ content = "✅ Generated {{$PROJECTNAME}}"
 > string after all placeholder replacements.
 
 
+## Patching existing files ✍️
+
+By default a `[[files]]` entry **overwrites** its destination. Set a `mode` on
+the entry to merge the rendered content into a file that already exists instead,
+so a template can ship incremental changes — extra `CLAUDE.md` rules, a new
+config block, a diff — that people apply on top of their own files without
+losing them. Patch modes do **not** need `--force`; editing an existing file is
+the whole point (see [Existing files](#existing-files-)).
+
+| `mode`       | Behaviour                                                                                 | Extra fields |
+|--------------|-------------------------------------------------------------------------------------------|--------------|
+| `overwrite`  | Replace the file with the rendered content (default — same as omitting `mode`).           | —            |
+| `append`     | Add the rendered content to the **end** of the file (creates it if missing).              | —            |
+| `prepend`    | Add the rendered content to the **start** of the file.                                    | —            |
+| `insert`     | Insert the content on the line(s) before/after the **first** line containing `anchor` (only the first match is used if it repeats). Falls back to `append` when the anchor is absent. | `anchor`, `position` |
+| `block`      | Maintain an idempotent, marker-delimited block. Re-applying replaces the block in place instead of duplicating it. | `marker` |
+| `patch`      | Apply the rendered content to the file as a **unified diff**.                             | —            |
+
+A newline always separates existing content from appended/prepended content.
+`anchor` and `marker` support placeholders like any other field. Patch modes only
+apply to filesystem targets; for `stdout://`, `clipboard://`, etc. the rendered
+fragment is written as-is.
+
+**Append rules to an existing `CLAUDE.md`** (nothing already in the file is touched):
+
+```toml
+[[files]]
+path = "CLAUDE.md"
+mode = "append"
+content = """
+
+## Added by the shared template
+- Always run `cargo test` before committing.
+"""
+```
+
+**Insert after an anchor line** — place content right below a heading:
+
+```toml
+[[files]]
+path = "CLAUDE.md"
+mode = "insert"
+anchor = "## Conventions"
+position = "after"          # "before" | "after" (default: after)
+content = "- Prefer `eprintln!` for progress messages."
+```
+
+**Keep an idempotent block** — re-running updates the block instead of piling on
+duplicates. The block is delimited by `<!-- spark:<marker> start -->` /
+`<!-- spark:<marker> end -->` comment markers (handy for Markdown):
+
+```toml
+[[files]]
+path = "CLAUDE.md"
+mode = "block"
+marker = "agent-rules"     # optional; defaults to "spark"
+content = """
+- Never commit secrets.
+- Keep functions small.
+"""
+```
+
+**Apply a unified diff** — `content` is the diff text:
+
+```toml
+[[files]]
+path = "Cargo.toml"
+mode = "patch"
+content = """
+--- a
++++ b
+@@ -1,3 +1,3 @@
+ [package]
+-version = "1.0.0"
++version = "1.1.0"
+ edition = "2021"
+"""
+```
+
+> [!NOTE]
+> `--dry-run` prints the patch **fragment** (what gets merged) with its mode, not
+> the final merged file — the merge reads the destination, which a dry run never
+> touches.
+
+Library callers set the mode with the `File` builder:
+`File::create(path, content).with_mode(FileMode::Append)`,
+`.with_anchor("## Conventions").with_position(Position::After)`, or
+`.with_marker("agent-rules")`.
+
+Ready-to-run templates for every mode live in
+[`examples/patch-modes/`](examples/patch-modes/) — each folder has a seed file
+and a template you can run against it.
+
 ## Output directory 📂
 
 By default files are created relative to the current directory. Point Spark somewhere else with `--output-dir` / `-o`; the directory is created if needed and relative `[[files]]` paths are resolved from it. The template name and `--json` path are still looked up relative to where you ran the command.
@@ -593,6 +687,11 @@ spark template --force
 ```
 
 Library callers use `Context::force(true)`; otherwise `extract_with_context` returns `Error::FileExists`.
+
+This guard only applies to overwrite-mode entries. Entries using a patch `mode`
+(`append`, `insert`, `block`, `patch`, …) are expected to edit files that
+already exist, so they skip the check and merge into the destination instead —
+see [Patching existing files](#patching-existing-files-).
 
 Destination paths containing `..` are rejected before anything is written, so a shared template cannot quietly reach outside the working directory. Absolute paths and `~` are still allowed because they are explicit in the template. Pass `--allow-outside` (or `Context::allow_outside(true)`) to permit `..`.
 
