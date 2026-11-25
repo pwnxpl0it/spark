@@ -401,7 +401,19 @@ impl Template {
             } else if let Some(path) = target.expanded_path() {
                 // Patch modes merge into the current destination. Anchor/marker
                 // may carry placeholders, so resolve them with the final keywords.
-                let existing = fs::read_to_string(&path).ok();
+                // A missing file is a valid "no existing content" input, but any
+                // other read error (permissions, bad UTF-8, …) must surface —
+                // treating it as empty would silently discard the file.
+                let existing = match fs::read_to_string(&path) {
+                    Ok(contents) => Some(contents),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => {
+                        return Err(crate::Error::PatchApply {
+                            path: file.path.clone(),
+                            message: format!("cannot read existing file to patch it: {e}"),
+                        });
+                    }
+                };
                 let anchor = src
                     .anchor
                     .as_deref()
@@ -1439,6 +1451,31 @@ Status: {{{{$.status[0]}}}}
         assert_eq!(
             fs::read_to_string(&target).unwrap(),
             "# Existing rules\n- keep secrets safe\n## Added by template\n- always run tests"
+        );
+    }
+
+    #[test]
+    fn extract_patch_mode_propagates_unreadable_destination() {
+        // A read failure on the destination must NOT be treated as "no content"
+        // (that would overwrite the file with just the fragment). Using a
+        // directory as the destination is a portable way to force a read error
+        // that is not NotFound.
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let target = dir.join("occupied");
+        fs::create_dir(&target).unwrap();
+
+        let template = Template::builder().with_file(
+            File::create(target.to_string_lossy().to_string(), "fragment")
+                .with_mode(FileMode::Append),
+        );
+
+        let err = template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::PatchApply { .. }),
+            "expected PatchApply, got {err:?}"
         );
     }
 
