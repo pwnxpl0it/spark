@@ -279,8 +279,21 @@ impl Template {
         let mut active_options = options;
 
         for file in files {
+            // Scan content, path, and (for patch modes) anchor/marker so a
+            // placeholder that appears *only* in anchor/marker is still resolved
+            // or prompted. '\n' between parts keeps a trailing `{{$` in one part
+            // from fusing with a leading `}}` in the next into a false token.
+            let mut scan = format!("{}\n{}", file.content, file.path);
+            if let Some(anchor) = &file.anchor {
+                scan.push('\n');
+                scan.push_str(anchor);
+            }
+            if let Some(marker) = &file.marker {
+                scan.push('\n');
+                scan.push_str(marker);
+            }
             Fns::find_and_resolve(
-                &format!("{}\n{}", file.content, file.path),
+                &scan,
                 &mut keywords,
                 re,
                 &json_data,
@@ -1522,6 +1535,63 @@ Status: {{{{$.status[0]}}}}
         assert_eq!(
             fs::read_to_string(&target).unwrap(),
             "[core]\neditor = \"vim\"\n[net]\ntimeout = 30\n"
+        );
+    }
+
+    #[test]
+    fn extract_insert_resolves_placeholder_only_in_anchor() {
+        // The anchor references a value that appears nowhere in content/path.
+        // It must still be resolved (here from JSON) rather than left literal,
+        // which would miss the anchor and silently append at the end.
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let target = dir.join("config.toml");
+        fs::write(&target, "[core]\n[net]\n").unwrap();
+
+        let template = Template::builder()
+            .with_options(Options {
+                json_data: Some(serde_json::json!({ "sect": "net" })),
+                ..Options::default()
+            })
+            .with_file(
+                File::create(target.to_string_lossy().to_string(), "timeout = 30")
+                    .with_mode(FileMode::Insert)
+                    .with_anchor("[{{$.sect}}]")
+                    .with_position(Position::After),
+            );
+
+        template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "[core]\n[net]\ntimeout = 30\n"
+        );
+    }
+
+    #[test]
+    fn extract_insert_anchor_read_errors_non_interactive() {
+        // A `:read` placeholder that lives only in the anchor must be surfaced
+        // as a missing variable in non-interactive mode — proof the anchor is
+        // actually scanned for placeholders.
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let target = dir.join("f.txt");
+        fs::write(&target, "x\n").unwrap();
+
+        let template = Template::builder().with_file(
+            File::create(target.to_string_lossy().to_string(), "y")
+                .with_mode(FileMode::Insert)
+                .with_anchor("{{$ANCHOR:read}}"),
+        );
+
+        let err = template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::MissingVariable(ref v) if v == "ANCHOR"),
+            "expected MissingVariable(ANCHOR), got {err:?}"
         );
     }
 
