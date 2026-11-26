@@ -240,6 +240,12 @@ fn run_template(
         return Ok(());
     }
 
+    // Resolve the undo manifest path before `--output-dir` changes the cwd.
+    // A relative `--config` would otherwise resolve against the output dir,
+    // writing the manifest inside the generated project and leaving it where
+    // `spark undo` (run from the original directory) cannot find it.
+    let manifest = config.undo_manifest_path();
+
     // Template and JSON paths are already resolved, so it is safe to move into
     // the output directory now; relative [[files]] paths land there.
     if let Some(out) = &args.output_dir {
@@ -254,7 +260,6 @@ fn run_template(
     // Record how to reverse this extraction so `spark undo` can roll it back.
     // A failure to write the manifest must not fail the generation itself.
     if !undo.is_empty() {
-        let manifest = config.undo_manifest_path();
         match undo.save(&manifest) {
             Ok(()) => eprintln!(
                 "{}: run {} to revert this",
