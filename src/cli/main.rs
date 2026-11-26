@@ -1,7 +1,7 @@
 use crate::config::*;
 use colored::*;
 use dotenvy::dotenv;
-use spark::{Context, Error, Keywords, MissingPolicy, Template};
+use spark::{Context, Error, Hooks, Keywords, MissingPolicy, Template};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -230,14 +230,35 @@ fn run_template(
     if args.strict {
         context = context.on_missing(MissingPolicy::Error);
     }
+    // Hooks run arbitrary shell commands, so they are opt-in: without
+    // `--run-hooks` a template's hooks are never executed.
+    let hooks = parsed_template.hooks.clone();
+
     if args.dry_run {
         let rendered = parsed_template.render(&context)?;
         print_dry_run(
             &rendered,
             parsed_template.files.as_deref().unwrap_or_default(),
         );
+        if let Some(hooks) = hooks.as_ref().filter(|h| !h.is_empty()) {
+            print_hook_plan(hooks, args.run_hooks);
+        }
         return Ok(());
     }
+
+    let run_hooks = match hooks.as_ref().filter(|h| !h.is_empty()) {
+        Some(hooks) if args.run_hooks => Some(hooks),
+        Some(hooks) => {
+            eprintln!(
+                "{}: template defines {} hook(s); re-run with {} to execute them",
+                "note".bold(),
+                hooks.len(),
+                "--run-hooks".bold().green()
+            );
+            None
+        }
+        None => None,
+    };
 
     // Template and JSON paths are already resolved, so it is safe to move into
     // the output directory now; relative [[files]] paths land there.
@@ -248,8 +269,32 @@ fn run_template(
             .map_err(|e| Error::Custom(format!("cannot enter '{}': {}", out.display(), e)))?;
     }
 
+    // Pre hooks run before anything is written so a failed check aborts cleanly.
+    if let Some(hooks) = run_hooks {
+        hooks.run_pre()?;
+    }
     parsed_template.extract_with_context(&context)?;
+    if let Some(hooks) = run_hooks {
+        hooks.run_post()?;
+    }
     Ok(())
+}
+
+/// Lists a template's hook commands for `--dry-run`, so they can be reviewed
+/// before being trusted. Nothing is executed.
+fn print_hook_plan(hooks: &Hooks, run_hooks: bool) {
+    let note = if run_hooks {
+        "hooks (not run in dry run)"
+    } else {
+        "hooks (skipped without --run-hooks)"
+    };
+    eprintln!("{}", note.yellow().bold());
+    for cmd in &hooks.pre {
+        eprintln!("  {} {}", "pre ".blue(), cmd);
+    }
+    for cmd in &hooks.post {
+        eprintln!("  {} {}", "post".blue(), cmd);
+    }
 }
 
 /// Prints each rendered file as a `==> path` header followed by its content.

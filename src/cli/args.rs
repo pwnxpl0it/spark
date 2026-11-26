@@ -57,6 +57,11 @@ pub struct Cli {
     #[arg(short = 'n', long, requires = "template")]
     pub dry_run: bool,
 
+    /// Run the template's pre/post hooks (shell commands). Off by default:
+    /// without this flag any hooks a template defines are skipped.
+    #[arg(long, requires = "template")]
+    pub run_hooks: bool,
+
     /// Directory to generate into (created if missing); relative file paths are resolved from here
     #[arg(short = 'o', long, requires = "template", value_name = "DIR")]
     pub output_dir: Option<PathBuf>,
@@ -171,6 +176,15 @@ mod tests {
         let cli = Cli::try_parse_from(["spark", "list", "-c", "/tmp/x.toml"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::List)));
         assert_eq!(cli.config, "/tmp/x.toml");
+    }
+
+    #[test]
+    fn run_hooks_defaults_off_and_requires_template() {
+        let cli = Cli::try_parse_from(["spark", "demo"]).unwrap();
+        assert!(!cli.run_hooks);
+        let cli = Cli::try_parse_from(["spark", "demo", "--run-hooks"]).unwrap();
+        assert!(cli.run_hooks);
+        assert!(Cli::try_parse_from(["spark", "--run-hooks"]).is_err());
     }
 
     #[test]
