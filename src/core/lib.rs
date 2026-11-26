@@ -75,6 +75,7 @@
 pub mod context;
 pub mod error;
 pub mod funcs;
+pub mod hooks;
 pub mod keywords;
 pub mod output_target;
 pub mod patch;
@@ -83,6 +84,7 @@ mod utils;
 
 pub use context::{Context, MissingPolicy};
 pub use error::{Error, Result};
+pub use hooks::Hooks;
 pub use output_target::OutputTarget;
 pub use patch::{FileMode, Position};
 use serde::{Deserialize, Serialize};
@@ -148,6 +150,11 @@ pub struct Template {
     pub info: Option<Information>,
     /// Execution and engine options.
     pub options: Option<Options>,
+    /// Commands to run before and after generation. Never executed by the
+    /// library itself; the caller runs them explicitly (the CLI gates this
+    /// behind `--run-hooks`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hooks: Option<Hooks>,
     /// List of file templates to render.
     pub files: Option<Vec<File>>,
 }
@@ -278,6 +285,7 @@ content = "Hello"
                 json_data: None,
                 project_root: "proj".into(),
             }),
+            hooks: None,
             files: Some(vec![File::create("a.txt", "b")]),
         };
 

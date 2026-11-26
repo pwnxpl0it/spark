@@ -90,6 +90,7 @@ impl Template {
         Self {
             info: None,
             options: None,
+            hooks: None,
             files: Some(Vec::new()),
         }
     }
@@ -175,6 +176,7 @@ impl Template {
 
         let template = Self {
             info: None,
+            hooks: None,
             files: Some(files),
             options: None,
         };
@@ -583,6 +585,7 @@ mod tests {
         let mut template = Template {
             info: None,
             options: None,
+            hooks: None,
             files: None,
         };
 
@@ -699,6 +702,7 @@ mod tests {
                 json_data: Some(serde_json::json!({ "name": "spark" })),
                 project_root: String::new(),
             }),
+            hooks: None,
             files: Some(vec![File::new(
                 out_file.to_string_lossy().to_string(),
                 // JSON resolve → keyword replace → Liquid filter
@@ -752,6 +756,7 @@ mod tests {
                 json_data: None,
                 project_root: String::new(),
             }),
+            hooks: None,
             files: Some(vec![]),
         };
         let mut keywords = HashMap::new();
@@ -773,6 +778,7 @@ mod tests {
                 json_data: None,
                 project_root: String::new(),
             }),
+            hooks: None,
             files: Some(vec![File::new(
                 out_file.to_string_lossy().to_string(),
                 "Hello {{$NAME}}".into(),
@@ -809,6 +815,7 @@ mod tests {
                 json_data: Some(serde_json::json!({ "module": "core" })),
                 project_root: "{{$PROJECTNAME}}".into(),
             }),
+            hooks: None,
             files: Some(vec![
                 File::new(first_path, "first".into()),
                 File::new(second_path, "second {{$.module}}".into()),
@@ -1042,6 +1049,7 @@ content = "hello"
                 json_data: None,
                 project_root: "{{$PROJECTNAME}}".into(),
             }),
+            hooks: None,
             files: Some(vec![File::new(file_path, "# {{$PROJECTNAME}}".into())]),
         };
 
@@ -1132,6 +1140,7 @@ Status: {{{{$.status[0]}}}}
                 json_data: None,
                 project_root: String::new(),
             }),
+            hooks: None,
             files: Some(vec![File::new(
                 "stdout://".into(),
                 "Hello {{$GREETING}}".into(),
@@ -1162,6 +1171,7 @@ Status: {{{{$.status[0]}}}}
                 json_data: None,
                 project_root: String::new(),
             }),
+            hooks: None,
             files: Some(vec![File::new(
                 "stderr://".into(),
                 "error: {{$MSG}}".into(),
@@ -1195,6 +1205,7 @@ Status: {{{{$.status[0]}}}}
                 json_data: None,
                 project_root: String::new(),
             }),
+            hooks: None,
             files: Some(vec![File::new(raw_path, "content via file://".into())]),
         };
 
@@ -1223,6 +1234,7 @@ Status: {{{{$.status[0]}}}}
                 json_data: None,
                 project_root: String::new(),
             }),
+            hooks: None,
             files: Some(vec![File::new(
                 "stdout://".into(),
                 "project: {{$NAME}} by {{$AUTHOR}}".into(),
@@ -1247,6 +1259,7 @@ Status: {{{{$.status[0]}}}}
                 json_data: None,
                 project_root: String::new(),
             }),
+            hooks: None,
             files: Some(vec![File::new(
                 "stderr://".into(),
                 "{{ 'warn' | upcase }}".into(),
@@ -1275,6 +1288,7 @@ Status: {{{{$.status[0]}}}}
                 json_data: None,
                 project_root: String::new(),
             }),
+            hooks: None,
             files: Some(vec![
                 File::new(
                     file_path.to_string_lossy().to_string(),
@@ -1319,6 +1333,7 @@ Status: {{{{$.status[0]}}}}
             }),
             // content ends with "{{$" and path starts with a string ending in "}}"
             // Neither is a valid placeholder on its own.
+            hooks: None,
             files: Some(vec![File::new(file_path.clone(), "Hello {{$".into())]),
         };
 
@@ -1764,6 +1779,7 @@ Status: {{{{$.status[0]}}}}
                 json_data: None,
                 project_root: format!("{}/{{{{$PROJECTNAME}}}}", dir.display()),
             }),
+            hooks: None,
             files: Some(vec![File::new(
                 format!("{}/{{{{$PROJECTNAME}}}}/plugin/init.lua", dir.display()),
                 "require(\"{{$PROJECTNAME}}\")".into(),
