@@ -750,8 +750,9 @@ spark my-template --run-hooks
 
 This keeps you in control when generating from a template you did not write:
 review it first, then opt in. Commands run through the platform shell (`sh -c`
-on Unix, `cmd /C` on Windows) in the generation directory — the same directory
-your files are written to (including under `-o DIR`).
+on Unix, `cmd /C` on Windows) in the directory Spark runs in — the `-o DIR`
+target when given, otherwise the current directory. A template's `project_root`
+changes where files are written, not where hooks run.
 
 ### Reviewing hooks before trusting them
 
