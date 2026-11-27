@@ -10,6 +10,16 @@ pub mod options;
 
 pub const KEYWORDS_REGEX: &str = r"\{\{\$.*?\}\}";
 
+/// Result of a full extraction (`extract_inner`): the rendered files, the
+/// fully-resolved keyword map, an [`UndoLog`] of every write, and the resolved
+/// project root (`None` when the template sets none).
+type ExtractResult = (
+    Vec<RenderedFile>,
+    HashMap<String, String>,
+    UndoLog,
+    Option<String>,
+);
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Options {
@@ -462,10 +472,7 @@ impl Template {
     /// Renders, writes every file to its sink, and runs the git hook.
     /// Returns rendered files, the fully-resolved keyword map, and an
     /// [`UndoLog`] recording every filesystem write so it can be reversed.
-    fn extract_inner(
-        &self,
-        context: &Context,
-    ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>, UndoLog)> {
+    fn extract_inner(&self, context: &Context) -> crate::Result<ExtractResult> {
         let (rendered, keywords, options) = self.render_inner(context)?;
         // `rendered` is produced from `self.files` in order, so index-for-index
         // the two line up; zip them to recover each entry's write mode.
@@ -620,32 +627,42 @@ impl Template {
             }
         }
 
+        // The resolved project root (empty when the template sets none) tells
+        // the caller where the generated project lives — e.g. where to run post
+        // hooks, mirroring how git init runs inside it.
+        let project_root = {
+            let root = options.project_root.trim();
+            (!root.is_empty()).then(|| root.to_string())
+        };
+
         if self.options.is_some() {
             options.handle();
         }
 
-        Ok((rendered, keywords, undo))
+        Ok((rendered, keywords, undo, project_root))
     }
 
     /// Renders the template and writes all files to their target sinks (filesystem,
     /// `stdout://`, `stderr://`, or `clipboard://`), handling git repository initialization
     /// if enabled in template options.
     pub fn extract_with_context(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
-        let (rendered, _keywords, _undo) = self.extract_inner(context)?;
+        let (rendered, _keywords, _undo, _project_root) = self.extract_inner(context)?;
         Ok(rendered)
     }
 
     /// Like [`Template::extract_with_context`], but also returns an [`UndoLog`]
     /// capturing every filesystem write (each file's path and its prior
     /// content) so the extraction can later be reversed with
-    /// [`UndoLog::apply`]. Non-file sinks (`stdout://`, `clipboard://`, …) are
-    /// not recorded.
+    /// [`UndoLog::apply`], and the resolved project root (`None` when the
+    /// template sets none) so the caller can act inside the generated project
+    /// — for example to run post hooks there. Non-file sinks (`stdout://`,
+    /// `clipboard://`, …) are not recorded.
     pub fn extract_with_undo(
         &self,
         context: &Context,
-    ) -> crate::Result<(Vec<RenderedFile>, UndoLog)> {
-        let (rendered, _keywords, undo) = self.extract_inner(context)?;
-        Ok((rendered, undo))
+    ) -> crate::Result<(Vec<RenderedFile>, UndoLog, Option<String>)> {
+        let (rendered, _keywords, undo, project_root) = self.extract_inner(context)?;
+        Ok((rendered, undo, project_root))
     }
 
     /// Legacy extraction method for backwards compatibility with CLI and tests.
@@ -658,7 +675,7 @@ impl Template {
         keywords: &mut HashMap<String, String>,
     ) -> std::result::Result<(), String> {
         let context = Context::from(keywords.clone());
-        let (_rendered, resolved_keywords, _undo) =
+        let (_rendered, resolved_keywords, _undo, _project_root) =
             self.extract_inner(&context).map_err(|e| e.to_string())?;
 
         for (k, v) in resolved_keywords {
@@ -1814,7 +1831,7 @@ Status: {{{{$.status[0]}}}}
             ));
 
         let ctx = Context::new().non_interactive().force(true);
-        let (_rendered, undo) = template.extract_with_undo(&ctx).unwrap();
+        let (_rendered, undo, _root) = template.extract_with_undo(&ctx).unwrap();
 
         // Both writes happened.
         assert_eq!(fs::read_to_string(&existing).unwrap(), "REPLACED");
@@ -1833,7 +1850,7 @@ Status: {{{{$.status[0]}}}}
     #[test]
     fn extract_with_undo_ignores_non_file_sinks() {
         let template = Template::builder().with_file(File::create("stdout://", "just printed"));
-        let (_rendered, undo) = template
+        let (_rendered, undo, _root) = template
             .extract_with_undo(&Context::new().non_interactive())
             .unwrap();
         assert!(undo.is_empty(), "stdout:// has nothing to undo");

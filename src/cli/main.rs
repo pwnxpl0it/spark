@@ -411,7 +411,7 @@ fn run_template(
         hooks.run_pre()?;
     }
 
-    let (_rendered, undo) = parsed_template.extract_with_undo(&context)?;
+    let (_rendered, undo, project_root) = parsed_template.extract_with_undo(&context)?;
 
     // Record how to reverse this extraction so `spark undo` can roll it back.
     // A failure to write the manifest must not fail the generation itself.
@@ -430,9 +430,16 @@ fn run_template(
         }
     }
 
-    // Post hooks run after the files (and the undo manifest) are in place.
+    // Post hooks run after the files (and the undo manifest) are in place,
+    // inside the generated project root when the template defines one (so
+    // `cargo build`, `npm install`, … run in the project), falling back to the
+    // current directory otherwise.
     if let Some(hooks) = run_hooks {
-        hooks.run_post()?;
+        let post_dir = project_root
+            .as_deref()
+            .map(Path::new)
+            .filter(|p| p.is_dir());
+        hooks.run_post(post_dir)?;
     }
     Ok(())
 }

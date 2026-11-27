@@ -12,12 +12,14 @@
 //! Hooks run arbitrary commands, so Spark never executes them on its own: the
 //! library exposes them as data and runs them only when the caller explicitly
 //! asks (the CLI does so behind the `--run-hooks` flag). Commands run through
-//! the platform shell (`sh -c` on Unix, `cmd /C` on Windows) in the current
-//! working directory, in listed order, and the phase stops at the first command
-//! that exits non-zero.
+//! the platform shell (`sh -c` on Unix, `cmd /C` on Windows), in listed order,
+//! and the phase stops at the first command that exits non-zero. `pre` commands
+//! run in the current directory (before the project exists); `post` commands run
+//! in the generated project root when the caller passes one.
 
 use crate::Error;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::process::Command;
 
 /// Commands to run before and after a template is generated.
@@ -42,25 +44,34 @@ impl Hooks {
         self.pre.len() + self.post.len()
     }
 
-    /// Runs the `pre` commands in order, stopping at the first failure.
+    /// Runs the `pre` commands in order (in the current directory), stopping at
+    /// the first failure.
     pub fn run_pre(&self) -> crate::Result<()> {
-        run_all("pre", &self.pre)
+        run_all("pre", &self.pre, None)
     }
 
     /// Runs the `post` commands in order, stopping at the first failure.
-    pub fn run_post(&self) -> crate::Result<()> {
-        run_all("post", &self.post)
+    ///
+    /// When `dir` is `Some`, each command runs in that directory (the generated
+    /// project root); when `None`, commands run in the current directory.
+    pub fn run_post(&self, dir: Option<&Path>) -> crate::Result<()> {
+        run_all("post", &self.post, dir)
     }
 }
 
 /// Runs every command in a phase, echoing each to stderr before executing it.
 ///
+/// Each command runs in `dir` when given, otherwise the current directory.
 /// Returns `Err` as soon as a command fails to start or exits non-zero, so a
 /// failing `pre` phase can abort generation before anything is written.
-fn run_all(phase: &str, commands: &[String]) -> crate::Result<()> {
+fn run_all(phase: &str, commands: &[String], dir: Option<&Path>) -> crate::Result<()> {
     for command in commands {
         eprintln!("hook ({phase}): {command}");
-        let status = shell(command).status().map_err(|e| {
+        let mut cmd = shell(command);
+        if let Some(dir) = dir {
+            cmd.current_dir(dir);
+        }
+        let status = cmd.status().map_err(|e| {
             Error::Custom(format!("hook ({phase}) '{command}' failed to start: {e}"))
         })?;
         if !status.success() {
@@ -158,8 +169,24 @@ post = ["cargo fmt", "git init"]
                 format!("printf 'should-not-run' >> {}", marker.display()),
             ],
         };
-        let err = hooks.run_post().unwrap_err().to_string();
+        let err = hooks.run_post(None).unwrap_err().to_string();
         assert!(err.contains("status 3"), "unexpected error: {err}");
         assert!(!marker.exists(), "later command ran after a failure");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn run_post_runs_in_the_given_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let hooks = Hooks {
+            pre: vec![],
+            // Relative path: only lands in `dir` if the command's cwd is `dir`.
+            post: vec!["printf 'x' > made-here".into()],
+        };
+        hooks.run_post(Some(dir.path())).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("made-here")).unwrap(),
+            "x"
+        );
     }
 }
