@@ -130,7 +130,7 @@ content = "# {{$NAME}}"
 
 // From a file path – note: Rust does not expand `~`; construct the path explicitly
 let home = std::env::var("HOME").expect("HOME not set");
-let template = Template::from_file(format!("{home}/.spark/templates/rust.toml"))?;
+let template = Template::from_file(format!("{home}/.config/spark/templates/rust.toml"))?;
 ```
 
 ### Build a template programmatically
