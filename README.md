@@ -2,17 +2,21 @@
  [![DeepWiki](https://img.shields.io/badge/DeepWiki-pwnxpl0it%2Fspark-blue.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==)](https://deepwiki.com/pwnxpl0it/spark)
 ![Latest Release](https://img.shields.io/github/v/release/pwnxpl0it/spark?label=Release)  ![Build Status](https://img.shields.io/github/actions/workflow/status/pwnxpl0it/spark/rust.yml?branch=main)  ![License](https://img.shields.io/github/license/pwnxpl0it/spark)  ![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen) 
 <br>
-Spark is a powerful and flexible project initializer designed to simplify your workflow. Using a TOML-based configuration, Spark allows you to quickly create project directories and files based on predefined templates. Whether you're a developer looking for consistency or speed, Spark has you covered.
+Spark is a fast, language-agnostic project initializer and template engine. Describe your scaffolding once as TOML templates — the files, the directory layout, and the values that fill them — then generate a ready-to-build project in a single command. Spark runs as a standalone CLI and ships as a Rust library you can embed, so the same templates power your terminal, your editor, and your own tools.
 
 **Features:**
-- **TOML-based templates** for structured project creation.
-- Support for **environment variables** and **dotenv** files.
-- **Dynamic placeholders** and **custom functions** for template customization.
-- **Constant values from configuration**
-- **JSON Support** to automate user input 
-- Integration with **Git** for version control setup.
-- **Liquid templating support** for advanced customization.
-- **And more..**
+- **TOML-based templates** — files, directories, and options in one declarative file.
+- **Dynamic placeholders & functions** — interactive `:read` prompts, `jq`-powered JSON lookups, and more.
+- **Supply values non-interactively** — `--from key=value` presets, JSON input, environment variables, and `.env` files.
+- **Flexible write modes** — overwrite, append, prepend, insert, block, or apply a unified-diff **patch** to existing files.
+- **Multiple output targets** — write to files, `stdout`, `stderr`, or the clipboard.
+- **Undo** — `spark undo` reverses the last generation.
+- **Pre/post hooks** — opt-in shell commands to run before and after generation (`--run-hooks`).
+- **Start from GitHub** — scaffold directly from a remote template repository.
+- **Git integration** — initialize a repository as part of project creation.
+- **Liquid templating** — conditionals, loops, and filters for advanced templates.
+- **Library + CLI** — use Spark from the terminal or embed it as a Rust crate.
+- **Editor integration** — a first-class Neovim plugin (`spark.nvim`).
 
 > [!WARNING]
 > This project was previously named `idkmng`. Some issues and references may still use the old name.
