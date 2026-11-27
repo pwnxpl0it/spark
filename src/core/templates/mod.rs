@@ -5,7 +5,11 @@ use colored::Colorize;
 use indexmap::IndexMap;
 use promptly::prompt;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::{Path, PathBuf},
+};
 pub mod options;
 
 pub const KEYWORDS_REGEX: &str = r"\{\{\$.*?\}\}";
@@ -591,6 +595,11 @@ impl Template {
         // snapshotting each file target's prior content first so the extraction
         // can be reversed later.
         let mut undo = UndoLog::new();
+        // Directories that do not yet exist but will be created to hold the
+        // files below, so undo can remove them. Collected across all targets
+        // (deduped) and checked against the disk *before* any write, so a
+        // directory the user already had is never recorded.
+        let mut created_dirs: HashSet<PathBuf> = HashSet::new();
         for (target, content, display) in file_plan.values().chain(sink_plan.iter()) {
             let snapshot = if let Some(path) = target.expanded_path() {
                 // Record an absolute path so undo works from any directory,
@@ -602,6 +611,17 @@ impl Template {
                         .map(|cwd| cwd.join(&path))
                         .unwrap_or_else(|_| path.clone())
                 };
+                // Walk up from the file's parent, recording each ancestor that
+                // does not exist yet and stopping at the first that does — so we
+                // record exactly the directories this extraction will create.
+                let mut ancestor = abs.parent();
+                while let Some(dir) = ancestor {
+                    if dir.as_os_str().is_empty() || dir.exists() || created_dirs.contains(dir) {
+                        break;
+                    }
+                    created_dirs.insert(dir.to_path_buf());
+                    ancestor = dir.parent();
+                }
                 match fs::read_to_string(&path) {
                     Ok(existing) => Some((abs, Some(existing))),
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some((abs, None)),
@@ -625,6 +645,9 @@ impl Template {
             if let Some((path, previous)) = snapshot {
                 undo.push(UndoEntry::new(path, previous));
             }
+        }
+        for dir in created_dirs {
+            undo.push_dir(dir);
         }
 
         // The resolved project root (empty when the template sets none) tells
@@ -1838,13 +1861,29 @@ Status: {{{{$.status[0]}}}}
         assert_eq!(fs::read_to_string(&created).unwrap(), "brand new");
         assert_eq!(undo.entries.len(), 2);
 
-        // Undo restores the overwritten file and deletes the created one.
+        // The `nested/` directory had to be created for `created.txt`, so it is
+        // recorded for removal; the pre-existing `dir` is not.
+        let nested = dir.join("nested");
+        assert!(
+            undo.created_dirs.contains(&nested),
+            "newly created dir should be recorded"
+        );
+        assert!(
+            !undo.created_dirs.contains(&dir),
+            "pre-existing dir must not be recorded"
+        );
+
+        // Undo restores the overwritten file, deletes the created one, and
+        // removes the now-empty directory it had to create.
         let report = undo.apply();
         assert_eq!(report.restored, 1);
         assert_eq!(report.deleted, 1);
+        assert_eq!(report.removed_dirs, 1);
         assert!(report.errors.is_empty());
         assert_eq!(fs::read_to_string(&existing).unwrap(), "ORIGINAL");
         assert!(!created.exists());
+        assert!(!nested.exists(), "created directory should be removed");
+        assert!(dir.exists(), "pre-existing directory must survive");
     }
 
     #[test]

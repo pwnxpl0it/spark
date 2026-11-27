@@ -461,10 +461,11 @@ fn run_undo(config: &Config) -> spark::Result<()> {
         eprintln!("{}: {}", "warning".yellow(), err);
     }
     eprintln!(
-        "{}: restored {}, removed {} file(s)",
+        "{}: restored {}, removed {} file(s), {} dir(s)",
         "undo".blue(),
         report.restored,
-        report.deleted
+        report.deleted,
+        report.removed_dirs
     );
 
     // Consume the manifest so a second `undo` is a no-op rather than a replay.
