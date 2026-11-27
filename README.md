@@ -808,9 +808,14 @@ spark my-template --run-hooks
 
 This keeps you in control when generating from a template you did not write:
 review it first, then opt in. Commands run through the platform shell (`sh -c`
-on Unix, `cmd /C` on Windows) in the directory Spark runs in — the `-o DIR`
-target when given, otherwise the current directory. A template's `project_root`
-changes where files are written, not where hooks run.
+on Unix, `cmd /C` on Windows).
+
+**Working directory.** `pre` commands run in the directory Spark runs in (the
+`-o DIR` target when given, otherwise the current directory) — the project does
+not exist yet. `post` commands run **inside the template's `project_root`** (the
+generated project), so `cargo build`, `npm install`, and similar finalizers act
+on the new project — the same directory git init uses. When the template sets no
+`project_root`, `post` commands run in the directory Spark runs in.
 
 ### Reviewing hooks before trusting them
 
