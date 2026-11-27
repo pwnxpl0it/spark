@@ -135,7 +135,7 @@ fn run_init(
 
     let dest = format!("{name}.toml");
     eprintln!("{}: {}", "Creating Template".bold().green(), dest.yellow());
-    Template::generate_from_with(&source, &dest, options).map_err(Error::Custom)
+    Template::generate_from_with(&source, &dest, options)
 }
 
 /// Splits a `--from-github` spec into its `owner/repo` slug, optional ref, and
