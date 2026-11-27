@@ -144,19 +144,19 @@ impl Template {
     }
 
     /// Generates a template at `dest` from every file under the current directory.
-    pub fn generate(dest: &str) -> std::result::Result<(), String> {
+    pub fn generate(dest: &str) -> crate::Result<()> {
         Self::generate_from(Path::new("./"), dest)
     }
 
     /// Generates a template at `dest` from the current directory, writing the
     /// supplied `[options]` into it (`None` omits the `[options]` table).
-    pub fn generate_with(dest: &str, options: Option<Options>) -> std::result::Result<(), String> {
+    pub fn generate_with(dest: &str, options: Option<Options>) -> crate::Result<()> {
         Self::generate_from_with(Path::new("./"), dest, options)
     }
 
     /// Generates a template at `dest` from every file under `source`.
     /// Paths in the template are relative to `source`.
-    pub fn generate_from(source: &Path, dest: &str) -> std::result::Result<(), String> {
+    pub fn generate_from(source: &Path, dest: &str) -> crate::Result<()> {
         Self::generate_from_with(source, dest, None)
     }
 
@@ -167,7 +167,7 @@ impl Template {
         source: &Path,
         dest: &str,
         options: Option<Options>,
-    ) -> std::result::Result<(), String> {
+    ) -> crate::Result<()> {
         let dest_abs = fs::canonicalize(dest).ok();
         let prefix = source.to_string_lossy().to_string();
         let files: Vec<File> = list_files(source)
@@ -208,11 +208,12 @@ impl Template {
             options,
         };
 
-        let toml_string = toml::to_string_pretty(&template)
-            .map_err(|e| format!("Failed to serialize template: {}", e))?;
+        let toml_string = toml::to_string_pretty(&template)?;
 
-        write_content(dest, &toml_string)
-            .map_err(|e| format!("Failed to write template to file: {}", e))?;
+        write_content(dest, &toml_string).map_err(|e| crate::Error::OutputWrite {
+            path: dest.to_string(),
+            message: e.to_string(),
+        })?;
 
         eprintln!(
             "{}: Template successfully generated at {}",
