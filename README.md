@@ -731,7 +731,7 @@ This guard only applies to overwrite-mode entries. Entries using a patch `mode`
 already exist, so they skip the check and merge into the destination instead —
 see [Patching existing files](#patching-existing-files-).
 
-Destination paths containing `..` are rejected before anything is written, so a shared template cannot quietly reach outside the working directory. Absolute paths and `~` are still allowed because they are explicit in the template. Pass `--allow-outside` (or `Context::allow_outside(true)`) to permit `..`.
+Destination paths that can reach outside the working directory are rejected before anything is written, so a template you did not author cannot quietly write to `~/.bashrc` or `/etc`. A path is refused when, after `~`/`$VAR` expansion, it is **absolute** (`/etc/cron.d/x`, or `~/.config/...` once expanded) or contains a `..` component. This applies to every write mode, including the patch modes (`append`, `insert`, `block`, `patch`) that are otherwise exempt from the overwrite guard above. Pass `--allow-outside` (or `Context::allow_outside(true)`) to permit absolute and `..` destinations — do this only for templates you trust, since it lets a template write anywhere you can.
 
 ## Undoing a generation ↩️
 

