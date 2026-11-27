@@ -32,6 +32,7 @@ Spark is a powerful and flexible project initializer designed to simplify your w
 - [Template Options](#template-options)
 - [Output Targets 🎯](#output-targets-)
 - [Patching existing files ✍️](#patching-existing-files-)
+- [Undoing a generation ↩️](#undoing-a-generation-)
 - [Git Integration 🐙](#git-integration-)
 - [Example Templates](#example-templates)
   - [Neovim Plugin](#neovim-plugin)
@@ -726,6 +727,31 @@ already exist, so they skip the check and merge into the destination instead —
 see [Patching existing files](#patching-existing-files-).
 
 Destination paths containing `..` are rejected before anything is written, so a shared template cannot quietly reach outside the working directory. Absolute paths and `~` are still allowed because they are explicit in the template. Pass `--allow-outside` (or `Context::allow_outside(true)`) to permit `..`.
+
+## Undoing a generation ↩️
+
+Every run that writes to disk records how to reverse itself. Run `spark undo` to
+roll back the **most recent** generation:
+
+```sh
+spark my-template      # writes files (and records an undo manifest)
+spark undo             # deletes files it created, restores files it overwrote
+```
+
+- Files Spark **created** are deleted.
+- Files Spark **overwrote** or **patched** (`append`, `insert`, `block`,
+  `patch`, …) are restored to their exact previous content.
+- `stdout://`, `stderr://`, and `clipboard://` targets are not tracked — there is
+  nothing on disk to reverse.
+
+The manifest is stored next to your config file (so your generated project stays
+clean) and holds only the last run, so `undo` reverses the latest generation and
+then clears itself. Directories that became empty are left in place.
+
+> [!NOTE]
+> Library callers get the same information from
+> `Template::extract_with_undo`, which returns an `UndoLog` alongside the
+> rendered files; call `UndoLog::apply()` to reverse the writes.
 
 ## Git Integration 🐙
 

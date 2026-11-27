@@ -87,6 +87,15 @@ content = '''
         Path::new(&self.path).is_file()
     }
 
+    /// Path of the undo manifest, stored next to the config file so a generated
+    /// project is never polluted. Only the most recent extraction is recorded.
+    pub fn undo_manifest_path(&self) -> std::path::PathBuf {
+        Path::new(&self.path)
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("undo.json")
+    }
+
     /// Creates the config file and starter templates if the config file is
     /// missing. Only intended for the default config location; an explicit
     /// `--config` path that does not exist is reported, not created.
