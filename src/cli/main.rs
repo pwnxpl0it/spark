@@ -1,7 +1,7 @@
 use crate::config::*;
 use colored::*;
 use dotenvy::dotenv;
-use spark::{Context, Error, Keywords, MissingPolicy, Template};
+use spark::{Context, Error, Keywords, MissingPolicy, Options, Template};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,7 +33,14 @@ fn run() -> spark::Result<()> {
     }
 
     match (&args.command, args.template.as_deref()) {
-        (Some(Commands::Init), _) => run_init(),
+        (
+            Some(Commands::Init {
+                git,
+                liquid,
+                project_root,
+            }),
+            _,
+        ) => run_init(*git, *liquid, project_root.clone()),
         (Some(Commands::List), _) => run_list(&config),
         (None, Some(template)) => run_template(&args, &config, template, keywords),
         (None, None) => Err(Error::Custom(format!(
@@ -89,14 +96,24 @@ fn parse_from_pairs(pairs: &str, keywords: &mut HashMap<String, String>) -> spar
     Ok(())
 }
 
-fn run_init() -> spark::Result<()> {
+fn run_init(git: bool, liquid: bool, project_root: Option<String>) -> spark::Result<()> {
     let cwd = std::env::current_dir()?;
     let name = cwd.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
         Error::Custom("cannot derive a template name from the current directory".into())
     })?;
     let dest = format!("{name}.toml");
     eprintln!("{}: {}", "Creating Template".bold().green(), dest.yellow());
-    Template::generate(&dest).map_err(Error::Custom)
+
+    // Only emit an `[options]` table when at least one option was supplied, so a
+    // plain `spark init` keeps producing a minimal template.
+    let options = (git || liquid || project_root.is_some()).then(|| Options {
+        git,
+        use_liquid: liquid.then_some(true),
+        json_data: None,
+        project_root: project_root.unwrap_or_default(),
+    });
+
+    Template::generate_with(&dest, options).map_err(Error::Custom)
 }
 
 /// Returns the sorted template names (file stem) found in the templates dir,
