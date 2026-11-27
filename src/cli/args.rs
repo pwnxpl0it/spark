@@ -49,7 +49,8 @@ pub struct Cli {
     #[arg(short = 'f', long, requires = "template")]
     pub force: bool,
 
-    /// Allow destination paths containing '..' (writing outside the working directory)
+    /// Allow destination paths that escape the working directory: absolute paths
+    /// (including '~'/'$VAR' that expand to one) or paths containing '..'
     #[arg(long, requires = "template")]
     pub allow_outside: bool,
 

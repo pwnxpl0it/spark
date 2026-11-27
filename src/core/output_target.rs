@@ -101,12 +101,25 @@ impl OutputTarget {
         }
     }
 
-    /// Returns `true` if this is a file target whose path contains a `..`
-    /// component (after shell expansion).
+    /// Returns `true` if this is a file target whose destination is not
+    /// guaranteed to stay inside the working directory.
+    ///
+    /// After shell expansion a path escapes the working directory when it is
+    /// absolute — it has a root (`/etc/passwd`, or `~`/`$HOME` once expanded)
+    /// or a prefix (`C:\…`, `\\server\share`, or the drive-relative `C:foo`) —
+    /// or when it contains a `..` component (`a/../../x`). A plain relative
+    /// path with no `..` (`a/b/x.txt`) stays inside and is allowed. The writer
+    /// refuses an escaping path unless `--allow-outside` /
+    /// `Context::allow_outside` is set.
     pub fn escapes_cwd(&self) -> bool {
+        use std::path::Component;
         self.expanded_path().is_some_and(|p| {
-            p.components()
-                .any(|c| matches!(c, std::path::Component::ParentDir))
+            p.components().any(|c| {
+                matches!(
+                    c,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
         })
     }
 
@@ -419,8 +432,36 @@ mod tests {
         assert!(OutputTarget::from_path("../x.txt").escapes_cwd());
         assert!(OutputTarget::from_path("a/../../x.txt").escapes_cwd());
         assert!(!OutputTarget::from_path("a/b/x.txt").escapes_cwd());
-        assert!(!OutputTarget::from_path("/abs/x.txt").escapes_cwd());
+        // `..hidden` is an ordinary component, not a `..` traversal.
         assert!(!OutputTarget::from_path("..hidden/x.txt").escapes_cwd());
         assert!(!OutputTarget::Stdout.escapes_cwd());
+    }
+
+    /// Absolute destinations escape the working directory just as surely as a
+    /// `..` traversal does: a shared/remote template that writes to
+    /// `~/.bashrc` or `/etc/...` must be refused without `--allow-outside`,
+    /// even though it never uses `..`. Regression test for the path-guard hole
+    /// where only `..` was rejected.
+    #[test]
+    fn escapes_cwd_detects_absolute_paths() {
+        assert!(OutputTarget::from_path("/abs/x.txt").escapes_cwd());
+        assert!(OutputTarget::from_path("/etc/cron.d/evil").escapes_cwd());
+        // `~` and `$VAR` expand to an absolute path, so they escape too.
+        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"));
+        if home.is_ok() {
+            assert!(OutputTarget::from_path("~/.bashrc").escapes_cwd());
+            assert!(OutputTarget::from_path("$HOME/.bashrc").escapes_cwd());
+        }
+    }
+
+    /// Windows-style absolute and drive-relative paths (a `Prefix` component)
+    /// also escape. Drive-relative `C:foo` resolves against the drive's own
+    /// current directory, so it is not reliably inside the working directory.
+    #[cfg(windows)]
+    #[test]
+    fn escapes_cwd_detects_windows_prefixes() {
+        assert!(OutputTarget::from_path(r"C:\Windows\x.txt").escapes_cwd());
+        assert!(OutputTarget::from_path(r"\\server\share\x.txt").escapes_cwd());
+        assert!(OutputTarget::from_path(r"C:foo.txt").escapes_cwd());
     }
 }

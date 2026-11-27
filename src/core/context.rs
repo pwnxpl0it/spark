@@ -200,15 +200,19 @@ impl Context {
         self.force
     }
 
-    /// Allows destination paths that contain `..` components. When `false`
-    /// (default), `extract_with_context` returns [`crate::Error::UnsafePath`]
-    /// for such paths before writing anything.
+    /// Allows destination paths that can escape the working directory — after
+    /// `~`/`$VAR` expansion, paths that are absolute or contain a `..`
+    /// component. When `false` (default), `extract_with_context` returns
+    /// [`crate::Error::UnsafePath`] for such paths before writing anything, in
+    /// every write mode (including the patch modes). Enable it only for
+    /// templates you trust.
     pub fn allow_outside(mut self, allow: bool) -> Self {
         self.allow_outside = allow;
         self
     }
 
-    /// Returns whether `..` path components are permitted in destinations.
+    /// Returns whether paths that escape the working directory (absolute or
+    /// containing `..`) are permitted in destinations.
     pub fn is_allow_outside(&self) -> bool {
         self.allow_outside
     }

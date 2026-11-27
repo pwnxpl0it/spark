@@ -58,8 +58,9 @@ pub enum Error {
         message: String,
     },
 
-    /// A destination path contains `..` and escaping the working directory was not allowed.
-    #[error("refusing to write outside the working directory: '{0}' contains '..' (use --allow-outside or Context::allow_outside to allow)")]
+    /// A destination path can escape the working directory (it is absolute or
+    /// contains `..`) and escaping was not allowed.
+    #[error("refusing to write outside the working directory: '{0}' is absolute or contains '..' (use --allow-outside or Context::allow_outside to allow)")]
     UnsafePath(String),
 
     /// A non-overwrite write mode (`append`, `insert`, `block`, `patch`, …)
