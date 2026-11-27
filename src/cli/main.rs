@@ -1,7 +1,7 @@
 use crate::config::*;
 use colored::*;
 use dotenvy::dotenv;
-use spark::{Context, Error, Hooks, Keywords, MissingPolicy, Template};
+use spark::{Context, Error, Hooks, Keywords, MissingPolicy, Options, Template, UndoLog};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,8 +33,17 @@ fn run() -> spark::Result<()> {
     }
 
     match (&args.command, args.template.as_deref()) {
-        (Some(Commands::Init), _) => run_init(),
+        (
+            Some(Commands::Init {
+                git,
+                liquid,
+                project_root,
+                from_github,
+            }),
+            _,
+        ) => run_init(*git, *liquid, project_root.clone(), from_github.clone()),
         (Some(Commands::List), _) => run_list(&config),
+        (Some(Commands::Undo), _) => run_undo(&config),
         (None, Some(template)) => run_template(&args, &config, template, keywords),
         (None, None) => Err(Error::Custom(format!(
             "no template specified, see {}",
@@ -89,14 +98,136 @@ fn parse_from_pairs(pairs: &str, keywords: &mut HashMap<String, String>) -> spar
     Ok(())
 }
 
-fn run_init() -> spark::Result<()> {
-    let cwd = std::env::current_dir()?;
-    let name = cwd.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
-        Error::Custom("cannot derive a template name from the current directory".into())
-    })?;
+fn run_init(
+    git: bool,
+    liquid: bool,
+    project_root: Option<String>,
+    from_github: Option<String>,
+) -> spark::Result<()> {
+    // Only emit an `[options]` table when at least one option was supplied, so a
+    // plain `spark init` keeps producing a minimal template.
+    let options = (git || liquid || project_root.is_some()).then(|| Options {
+        git,
+        use_liquid: liquid.then_some(true),
+        json_data: None,
+        project_root: project_root.unwrap_or_default(),
+    });
+
+    // Source the files from a cloned GitHub repo, or the current directory.
+    // The `TempDir` guard must outlive the capture, so keep it bound.
+    let (source, name, _clone_guard) = match from_github {
+        Some(spec) => {
+            let (dir, repo, guard) = clone_github(&spec)?;
+            (dir, repo, Some(guard))
+        }
+        None => {
+            let cwd = std::env::current_dir()?;
+            let name = cwd
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| {
+                    Error::Custom("cannot derive a template name from the current directory".into())
+                })?
+                .to_string();
+            (cwd, name, None)
+        }
+    };
+
     let dest = format!("{name}.toml");
     eprintln!("{}: {}", "Creating Template".bold().green(), dest.yellow());
-    Template::generate(&dest).map_err(Error::Custom)
+    Template::generate_from_with(&source, &dest, options).map_err(Error::Custom)
+}
+
+/// Splits a `--from-github` spec into its `owner/repo` slug, optional ref, and
+/// the repo name used for the generated template file. Accepts `owner/repo` or
+/// `owner/repo@ref`; a trailing `.git` on the repo is tolerated.
+fn parse_github_spec(spec: &str) -> spark::Result<(String, Option<String>, String)> {
+    let (slug, reference) = match spec.split_once('@') {
+        Some((s, r)) => (s.trim(), Some(r.trim().to_string())),
+        None => (spec.trim(), None),
+    };
+    if reference.as_deref().is_some_and(str::is_empty) {
+        return Err(Error::Custom(format!(
+            "invalid --from-github '{spec}': empty ref after '@'"
+        )));
+    }
+
+    let slug = slug.trim_end_matches('/');
+    let (owner, repo) = slug.split_once('/').ok_or_else(|| {
+        Error::Custom(format!(
+            "invalid --from-github '{spec}': expected owner/repo"
+        ))
+    })?;
+    let repo = repo.trim_end_matches(".git");
+    if owner.is_empty() || repo.is_empty() || repo.contains('/') {
+        return Err(Error::Custom(format!(
+            "invalid --from-github '{spec}': expected owner/repo[@ref]"
+        )));
+    }
+
+    Ok((format!("{owner}/{repo}"), reference, repo.to_string()))
+}
+
+/// A temporary directory that is removed when dropped. Keeps the clone off the
+/// dependency list (std only) while still cleaning up on every exit path.
+struct TempDir {
+    path: PathBuf,
+}
+
+impl TempDir {
+    fn new() -> std::io::Result<Self> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!("spark-{}-{}", std::process::id(), nanos));
+        fs::create_dir_all(&path)?;
+        Ok(Self { path })
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Shallow-clones a GitHub repo into a temporary directory and returns the
+/// clone path, the repo name, and the `TempDir` guard (which deletes the clone
+/// when dropped). The ref, when given, must be a branch or tag.
+fn clone_github(spec: &str) -> spark::Result<(PathBuf, String, TempDir)> {
+    let (slug, reference, name) = parse_github_spec(spec)?;
+    let url = format!("https://github.com/{slug}.git");
+
+    let tmp = TempDir::new()
+        .map_err(|e| Error::Custom(format!("cannot create a temporary directory: {e}")))?;
+    let dest = tmp.path().join("repo");
+
+    eprintln!("{}: {}", "Cloning".bold().green(), url.yellow());
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["clone", "--depth", "1", "--quiet"]);
+    if let Some(reference) = &reference {
+        cmd.args(["--branch", reference]);
+    }
+    cmd.arg(&url).arg(&dest);
+
+    let status = cmd
+        .status()
+        .map_err(|e| Error::Custom(format!("failed to run git (is it installed?): {e}")))?;
+    if !status.success() {
+        let what = reference
+            .map(|r| format!("{slug}@{r}"))
+            .unwrap_or_else(|| slug.clone());
+        return Err(Error::Custom(format!(
+            "git clone failed for '{what}' (check the repo/ref exists and is accessible)"
+        )));
+    }
+
+    Ok((dest, name, tmp))
 }
 
 /// Returns the sorted template names (file stem) found in the templates dir,
@@ -260,6 +391,12 @@ fn run_template(
         None => None,
     };
 
+    // Resolve the undo manifest path before `--output-dir` changes the cwd.
+    // A relative `--config` would otherwise resolve against the output dir,
+    // writing the manifest inside the generated project and leaving it where
+    // `spark undo` (run from the original directory) cannot find it.
+    let manifest = config.undo_manifest_path();
+
     // Template and JSON paths are already resolved, so it is safe to move into
     // the output directory now; relative [[files]] paths land there.
     if let Some(out) = &args.output_dir {
@@ -273,9 +410,63 @@ fn run_template(
     if let Some(hooks) = run_hooks {
         hooks.run_pre()?;
     }
-    parsed_template.extract_with_context(&context)?;
+
+    let (_rendered, undo) = parsed_template.extract_with_undo(&context)?;
+
+    // Record how to reverse this extraction so `spark undo` can roll it back.
+    // A failure to write the manifest must not fail the generation itself.
+    if !undo.is_empty() {
+        match undo.save(&manifest) {
+            Ok(()) => eprintln!(
+                "{}: run {} to revert this",
+                "undo".blue(),
+                "spark undo".bold().green()
+            ),
+            Err(e) => eprintln!(
+                "{}: could not record undo information: {}",
+                "warning".yellow(),
+                e
+            ),
+        }
+    }
+
+    // Post hooks run after the files (and the undo manifest) are in place.
     if let Some(hooks) = run_hooks {
         hooks.run_post()?;
+    }
+    Ok(())
+}
+
+/// Reverses the most recent extraction recorded in the undo manifest.
+fn run_undo(config: &Config) -> spark::Result<()> {
+    let manifest = config.undo_manifest_path();
+    if !manifest.is_file() {
+        return Err(Error::Custom(
+            "nothing to undo (no template has been generated yet)".into(),
+        ));
+    }
+
+    let log = UndoLog::load(&manifest)
+        .map_err(|e| Error::Custom(format!("cannot read undo manifest: {e}")))?;
+    let report = log.apply();
+
+    for err in &report.errors {
+        eprintln!("{}: {}", "warning".yellow(), err);
+    }
+    eprintln!(
+        "{}: restored {}, removed {} file(s)",
+        "undo".blue(),
+        report.restored,
+        report.deleted
+    );
+
+    // Consume the manifest so a second `undo` is a no-op rather than a replay.
+    if let Err(e) = fs::remove_file(&manifest) {
+        eprintln!(
+            "{}: could not clear undo manifest: {}",
+            "warning".yellow(),
+            e
+        );
     }
     Ok(())
 }
@@ -323,6 +514,31 @@ fn print_dry_run(rendered: &[spark::RenderedFile], sources: &[spark::File]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn github_spec_without_ref() {
+        let (slug, reference, name) = parse_github_spec("pwnxpl0it/spark").unwrap();
+        assert_eq!(slug, "pwnxpl0it/spark");
+        assert_eq!(reference, None);
+        assert_eq!(name, "spark");
+    }
+
+    #[test]
+    fn github_spec_with_ref_and_dot_git() {
+        let (slug, reference, name) = parse_github_spec("pwnxpl0it/spark.git@v2.0.1").unwrap();
+        assert_eq!(slug, "pwnxpl0it/spark");
+        assert_eq!(reference.as_deref(), Some("v2.0.1"));
+        assert_eq!(name, "spark");
+    }
+
+    #[test]
+    fn github_spec_rejects_missing_owner_or_repo() {
+        assert!(parse_github_spec("justname").is_err());
+        assert!(parse_github_spec("owner/").is_err());
+        assert!(parse_github_spec("/repo").is_err());
+        assert!(parse_github_spec("a/b/c").is_err());
+        assert!(parse_github_spec("owner/repo@").is_err());
+    }
 
     #[test]
     fn from_pairs_populate_keywords() {

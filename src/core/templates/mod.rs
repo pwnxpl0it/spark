@@ -138,9 +138,26 @@ impl Template {
         Self::generate_from(Path::new("./"), dest)
     }
 
+    /// Generates a template at `dest` from the current directory, writing the
+    /// supplied `[options]` into it (`None` omits the `[options]` table).
+    pub fn generate_with(dest: &str, options: Option<Options>) -> std::result::Result<(), String> {
+        Self::generate_from_with(Path::new("./"), dest, options)
+    }
+
     /// Generates a template at `dest` from every file under `source`.
     /// Paths in the template are relative to `source`.
     pub fn generate_from(source: &Path, dest: &str) -> std::result::Result<(), String> {
+        Self::generate_from_with(source, dest, None)
+    }
+
+    /// Generates a template at `dest` from every file under `source`, writing
+    /// the supplied `[options]` into it (`None` omits the `[options]` table).
+    /// Paths in the template are relative to `source`.
+    pub fn generate_from_with(
+        source: &Path,
+        dest: &str,
+        options: Option<Options>,
+    ) -> std::result::Result<(), String> {
         let dest_abs = fs::canonicalize(dest).ok();
         let prefix = source.to_string_lossy().to_string();
         let files: Vec<File> = list_files(source)
@@ -178,7 +195,7 @@ impl Template {
             info: None,
             hooks: None,
             files: Some(files),
-            options: None,
+            options,
         };
 
         let toml_string = toml::to_string_pretty(&template)
@@ -195,11 +212,79 @@ impl Template {
         Ok(())
     }
 
+    /// Renders `string` as a Liquid template with no globals in scope.
     pub fn liquify(string: &str) -> std::result::Result<String, liquid::Error> {
-        let parser = liquid::ParserBuilder::with_stdlib().build()?;
-        let empty_globals = liquid::Object::new();
+        Self::liquify_with(string, &liquid::Object::new())
+    }
 
-        parser.parse(string)?.render(&empty_globals)
+    /// Renders `string` as a Liquid template with `globals` available as
+    /// top-level variables (e.g. the template's own `info`/`options` metadata).
+    pub fn liquify_with(
+        string: &str,
+        globals: &liquid::Object,
+    ) -> std::result::Result<String, liquid::Error> {
+        let parser = liquid::ParserBuilder::with_stdlib().build()?;
+        parser.parse(string)?.render(globals)
+    }
+
+    /// Builds the keyword/value pairs exposing the template's own `[info]` and
+    /// `[options]` metadata as `{{$INFO_*}}` / `{{$OPTIONS_*}}` placeholders.
+    /// Used both to seed the keyword map and (indirectly) to document the
+    /// available tokens.
+    fn metadata_keywords(info: &Option<Information>, options: &Options) -> Vec<(String, String)> {
+        let mut pairs = Vec::new();
+        if let Some(info) = info {
+            if let Some(name) = &info.name {
+                pairs.push((Keywords::from("INFO_NAME", None), name.clone()));
+            }
+            if let Some(author) = &info.author {
+                pairs.push((Keywords::from("INFO_AUTHOR", None), author.clone()));
+            }
+            if let Some(description) = &info.description {
+                pairs.push((
+                    Keywords::from("INFO_DESCRIPTION", None),
+                    description.clone(),
+                ));
+            }
+        }
+        pairs.push((Keywords::from("OPTIONS_GIT", None), options.git.to_string()));
+        pairs.push((
+            Keywords::from("OPTIONS_USE_LIQUID", None),
+            options.use_liquid.unwrap_or(false).to_string(),
+        ));
+        pairs
+    }
+
+    /// Builds the Liquid globals object exposing the template's own `[info]` and
+    /// `[options]` metadata as the `info` and `options` variables, so templates
+    /// can branch on them (e.g. `{% if options.git %}`).
+    fn metadata_globals(info: &Option<Information>, options: &Options) -> liquid::Object {
+        use liquid::model::Value;
+
+        let info = info.clone().unwrap_or_default();
+
+        let mut info_obj = liquid::Object::new();
+        info_obj.insert("name".into(), Value::scalar(info.name.unwrap_or_default()));
+        info_obj.insert(
+            "author".into(),
+            Value::scalar(info.author.unwrap_or_default()),
+        );
+        info_obj.insert(
+            "description".into(),
+            Value::scalar(info.description.unwrap_or_default()),
+        );
+
+        let mut options_obj = liquid::Object::new();
+        options_obj.insert("git".into(), Value::scalar(options.git));
+        options_obj.insert(
+            "use_liquid".into(),
+            Value::scalar(options.use_liquid.unwrap_or(false)),
+        );
+
+        let mut globals = liquid::Object::new();
+        globals.insert("info".into(), Value::Object(info_obj));
+        globals.insert("options".into(), Value::Object(options_obj));
+        globals
     }
 
     /// Resolves the project name if `{{$PROJECTNAME}}` is referenced by the file,
@@ -247,12 +332,13 @@ impl Template {
         file_path: &str,
         keywords: &HashMap<String, String>,
         options: &Options,
+        globals: &liquid::Object,
     ) -> std::result::Result<(String, String), String> {
         let output = Keywords::replace_keywords(keywords, file_content);
         let path = Keywords::replace_keywords(keywords, file_path);
 
         let final_output = if options.use_liquid.unwrap_or(false) {
-            Self::liquify(&output).map_err(|e| format!("Liquid error: {}", e))?
+            Self::liquify_with(&output, globals).map_err(|e| format!("Liquid error: {}", e))?
         } else {
             output
         };
@@ -280,6 +366,15 @@ impl Template {
         let mut rendered = Vec::with_capacity(files.len());
         let mut project = String::new();
         let mut active_options = options;
+
+        // Expose the template's own `[info]`/`[options]` metadata: as
+        // `{{$INFO_*}}` / `{{$OPTIONS_*}}` keywords (for every file, path, and
+        // anchor/marker) and as Liquid `info`/`options` variables. Existing
+        // keys (env, `[Keywords]`, `--from`) are left untouched.
+        for (key, value) in Self::metadata_keywords(&self.info, &active_options) {
+            keywords.entry(key).or_insert(value);
+        }
+        let globals = Self::metadata_globals(&self.info, &active_options);
 
         for file in files {
             // Scan content, path, and (for patch modes) anchor/marker so a
@@ -313,9 +408,14 @@ impl Template {
                 )?;
             }
 
-            let (path, final_output) =
-                Self::prepare_file_content(&file.content, &file.path, &keywords, &active_options)
-                    .map_err(crate::Error::Custom)?;
+            let (path, final_output) = Self::prepare_file_content(
+                &file.content,
+                &file.path,
+                &keywords,
+                &active_options,
+                &globals,
+            )
+            .map_err(crate::Error::Custom)?;
 
             rendered.push(RenderedFile {
                 path,
@@ -360,11 +460,12 @@ impl Template {
     }
 
     /// Renders, writes every file to its sink, and runs the git hook.
-    /// Returns rendered files plus the fully-resolved keyword map.
+    /// Returns rendered files, the fully-resolved keyword map, and an
+    /// [`UndoLog`] recording every filesystem write so it can be reversed.
     fn extract_inner(
         &self,
         context: &Context,
-    ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>)> {
+    ) -> crate::Result<(Vec<RenderedFile>, HashMap<String, String>, UndoLog)> {
         let (rendered, keywords, options) = self.render_inner(context)?;
         // `rendered` is produced from `self.files` in order, so index-for-index
         // the two line up; zip them to recover each entry's write mode.
@@ -479,29 +580,72 @@ impl Template {
             }
         }
 
-        // Phase 2 — commit the planned writes now that every merge succeeded.
+        // Phase 2 — commit the planned writes now that every merge succeeded,
+        // snapshotting each file target's prior content first so the extraction
+        // can be reversed later.
+        let mut undo = UndoLog::new();
         for (target, content, display) in file_plan.values().chain(sink_plan.iter()) {
+            let snapshot = if let Some(path) = target.expanded_path() {
+                // Record an absolute path so undo works from any directory,
+                // even for a file that does not exist yet.
+                let abs = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    std::env::current_dir()
+                        .map(|cwd| cwd.join(&path))
+                        .unwrap_or_else(|_| path.clone())
+                };
+                match fs::read_to_string(&path) {
+                    Ok(existing) => Some((abs, Some(existing))),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some((abs, None)),
+                    // An unreadable existing file (e.g. non-UTF-8) cannot be
+                    // safely snapshotted; leave it untracked rather than risk a
+                    // destructive restore on undo.
+                    Err(_) => None,
+                }
+            } else {
+                // Non-file sinks (stdout://, clipboard://, …) have nothing to undo.
+                None
+            };
+
             target
                 .write(content)
                 .map_err(|e| crate::Error::OutputWrite {
                     path: display.clone(),
                     message: e.to_string(),
                 })?;
+
+            if let Some((path, previous)) = snapshot {
+                undo.push(UndoEntry::new(path, previous));
+            }
         }
 
         if self.options.is_some() {
             options.handle();
         }
 
-        Ok((rendered, keywords))
+        Ok((rendered, keywords, undo))
     }
 
     /// Renders the template and writes all files to their target sinks (filesystem,
     /// `stdout://`, `stderr://`, or `clipboard://`), handling git repository initialization
     /// if enabled in template options.
     pub fn extract_with_context(&self, context: &Context) -> crate::Result<Vec<RenderedFile>> {
-        let (rendered, _keywords) = self.extract_inner(context)?;
+        let (rendered, _keywords, _undo) = self.extract_inner(context)?;
         Ok(rendered)
+    }
+
+    /// Like [`Template::extract_with_context`], but also returns an [`UndoLog`]
+    /// capturing every filesystem write (each file's path and its prior
+    /// content) so the extraction can later be reversed with
+    /// [`UndoLog::apply`]. Non-file sinks (`stdout://`, `clipboard://`, …) are
+    /// not recorded.
+    pub fn extract_with_undo(
+        &self,
+        context: &Context,
+    ) -> crate::Result<(Vec<RenderedFile>, UndoLog)> {
+        let (rendered, _keywords, undo) = self.extract_inner(context)?;
+        Ok((rendered, undo))
     }
 
     /// Legacy extraction method for backwards compatibility with CLI and tests.
@@ -514,7 +658,7 @@ impl Template {
         keywords: &mut HashMap<String, String>,
     ) -> std::result::Result<(), String> {
         let context = Context::from(keywords.clone());
-        let (_rendered, resolved_keywords) =
+        let (_rendered, resolved_keywords, _undo) =
             self.extract_inner(&context).map_err(|e| e.to_string())?;
 
         for (k, v) in resolved_keywords {
@@ -634,9 +778,14 @@ mod tests {
             project_root: String::new(),
         };
 
-        let (path, content) =
-            Template::prepare_file_content("Hello {{$TEST}}", "out.txt", &keywords, &options)
-                .unwrap();
+        let (path, content) = Template::prepare_file_content(
+            "Hello {{$TEST}}",
+            "out.txt",
+            &keywords,
+            &options,
+            &liquid::Object::new(),
+        )
+        .unwrap();
 
         assert_eq!(path, "out.txt");
         assert_eq!(content, "Hello value");
@@ -657,6 +806,7 @@ mod tests {
             "out.txt",
             &keywords,
             &options,
+            &liquid::Object::new(),
         )
         .unwrap();
 
@@ -682,6 +832,7 @@ mod tests {
             "out.txt",
             &keywords,
             &options,
+            &liquid::Object::new(),
         )
         .unwrap();
 
@@ -733,9 +884,14 @@ mod tests {
             project_root: String::new(),
         };
 
-        let (path, content) =
-            Template::prepare_file_content("hi", &file_path.to_string_lossy(), &keywords, &options)
-                .unwrap();
+        let (path, content) = Template::prepare_file_content(
+            "hi",
+            &file_path.to_string_lossy(),
+            &keywords,
+            &options,
+            &liquid::Object::new(),
+        )
+        .unwrap();
 
         assert_eq!(path, file_path.to_string_lossy());
         assert_eq!(content, "hi");
@@ -1340,12 +1496,26 @@ Status: {{{{$.status[0]}}}}
         let mut keywords = HashMap::new();
         template.extract(&mut keywords).unwrap();
 
-        // The keywords map should not contain any synthetic key created across the boundary
+        // The keywords map should not contain any synthetic key created across
+        // the boundary. The template's own `[info]`/`[options]` metadata tokens
+        // are seeded legitimately, so ignore those.
+        let synthetic: Vec<&String> = keywords
+            .keys()
+            .filter(|k| k.starts_with("{{$") && k.ends_with("}}"))
+            .filter(|k| {
+                !matches!(
+                    k.as_str(),
+                    "{{$INFO_NAME}}"
+                        | "{{$INFO_AUTHOR}}"
+                        | "{{$INFO_DESCRIPTION}}"
+                        | "{{$OPTIONS_GIT}}"
+                        | "{{$OPTIONS_USE_LIQUID}}"
+                )
+            })
+            .collect();
         assert!(
-            keywords.is_empty()
-                || !keywords
-                    .keys()
-                    .any(|k| k.starts_with("{{$") && k.ends_with("}}"))
+            synthetic.is_empty(),
+            "unexpected synthetic placeholder keys: {synthetic:?}"
         );
     }
 
@@ -1441,6 +1611,112 @@ Status: {{{{$.status[0]}}}}
     }
 
     #[test]
+    fn metadata_keywords_includes_present_info_and_options() {
+        let info = Some(Information::new(
+            Some("demo".into()),
+            Some("pwn".into()),
+            Some("a demo".into()),
+        ));
+        let options = Options {
+            git: true,
+            use_liquid: Some(true),
+            json_data: None,
+            project_root: String::new(),
+        };
+        let map: HashMap<String, String> = Template::metadata_keywords(&info, &options)
+            .into_iter()
+            .collect();
+        assert_eq!(map.get("{{$INFO_NAME}}").map(String::as_str), Some("demo"));
+        assert_eq!(map.get("{{$INFO_AUTHOR}}").map(String::as_str), Some("pwn"));
+        assert_eq!(
+            map.get("{{$INFO_DESCRIPTION}}").map(String::as_str),
+            Some("a demo")
+        );
+        assert_eq!(
+            map.get("{{$OPTIONS_GIT}}").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            map.get("{{$OPTIONS_USE_LIQUID}}").map(String::as_str),
+            Some("true")
+        );
+    }
+
+    #[test]
+    fn metadata_keywords_omits_absent_info_fields() {
+        let info = Some(Information::new(Some("demo".into()), None, None));
+        let pairs = Template::metadata_keywords(&info, &Options::default());
+        let keys: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();
+        assert!(keys.contains(&"{{$INFO_NAME}}"));
+        assert!(!keys.contains(&"{{$INFO_AUTHOR}}"));
+        assert!(!keys.contains(&"{{$INFO_DESCRIPTION}}"));
+        // `[options]` tokens are always present; git defaults to false.
+        let map: HashMap<String, String> = pairs.into_iter().collect();
+        assert_eq!(
+            map.get("{{$OPTIONS_GIT}}").map(String::as_str),
+            Some("false")
+        );
+    }
+
+    #[test]
+    fn render_exposes_template_metadata_as_keywords() {
+        let template = Template::builder()
+            .with_info(Information::new(
+                Some("demo".into()),
+                Some("pwn".into()),
+                None,
+            ))
+            .with_options(Options {
+                git: true,
+                use_liquid: Some(false),
+                json_data: None,
+                project_root: String::new(),
+            })
+            .with_file(File::create(
+                "out.txt",
+                "{{$INFO_NAME}} by {{$INFO_AUTHOR}} (git={{$OPTIONS_GIT}})",
+            ));
+        let ctx = Context::new().non_interactive();
+        let rendered = template.render(&ctx).unwrap();
+        assert_eq!(rendered[0].content, "demo by pwn (git=true)");
+    }
+
+    #[test]
+    fn render_lets_supplied_value_override_metadata_keyword() {
+        let template = Template::builder()
+            .with_info(Information::new(Some("from-info".into()), None, None))
+            .with_options(Options {
+                use_liquid: Some(false),
+                ..Options::default()
+            })
+            .with_file(File::create("out.txt", "{{$INFO_NAME}}"));
+        let ctx = Context::new()
+            .with_var("INFO_NAME", "from-cli")
+            .non_interactive();
+        let rendered = template.render(&ctx).unwrap();
+        assert_eq!(rendered[0].content, "from-cli");
+    }
+
+    #[test]
+    fn render_exposes_template_metadata_as_liquid_globals() {
+        let template = Template::builder()
+            .with_info(Information::new(Some("demo".into()), None, None))
+            .with_options(Options {
+                git: true,
+                use_liquid: Some(true),
+                json_data: None,
+                project_root: String::new(),
+            })
+            .with_file(File::create(
+                "out.txt",
+                "{% if options.git %}git-on{% else %}git-off{% endif %} {{ info.name | upcase }}",
+            ));
+        let ctx = Context::new().non_interactive();
+        let rendered = template.render(&ctx).unwrap();
+        assert_eq!(rendered[0].content, "git-on DEMO");
+    }
+
+    #[test]
     fn generate_escapes_placeholders_in_captured_files() {
         let dir_tmp = tempfile::tempdir().unwrap();
         let dir = dir_tmp.path().to_path_buf();
@@ -1454,6 +1730,43 @@ Status: {{{{$.status[0]}}}}
         assert!(generated.contains("hello {{$$WORLD}}"), "{generated}");
         let parsed: Template = generated.parse().unwrap();
         assert_eq!(parsed.files.unwrap()[0].path, "tpl.txt");
+    }
+
+    #[test]
+    fn generate_from_with_writes_supplied_options() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("main.rs"), "fn main() {}").unwrap();
+
+        let dest = dir.join("out.toml");
+        let options = Options {
+            git: true,
+            use_liquid: Some(true),
+            json_data: None,
+            project_root: "{{$PROJECTNAME}}".into(),
+        };
+        Template::generate_from_with(&dir, &dest.to_string_lossy(), Some(options)).unwrap();
+
+        let parsed: Template = fs::read_to_string(&dest).unwrap().parse().unwrap();
+        let options = parsed.options.expect("generated [options] table");
+        assert!(options.git);
+        assert_eq!(options.use_liquid, Some(true));
+        assert_eq!(options.project_root, "{{$PROJECTNAME}}");
+    }
+
+    #[test]
+    fn generate_from_without_options_omits_table() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("main.rs"), "fn main() {}").unwrap();
+
+        let dest = dir.join("out.toml");
+        Template::generate_from(&dir, &dest.to_string_lossy()).unwrap();
+
+        let generated = fs::read_to_string(&dest).unwrap();
+        assert!(!generated.contains("[options]"), "{generated}");
     }
 
     #[test]
@@ -1477,6 +1790,53 @@ Status: {{{{$.status[0]}}}}
         let ctx = Context::new().non_interactive().force(true);
         template.extract_with_context(&ctx).unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "clobbered");
+    }
+
+    #[test]
+    fn extract_with_undo_reverses_creation_and_overwrite() {
+        let dir_tmp = tempfile::tempdir().unwrap();
+        let dir = dir_tmp.path().to_path_buf();
+        fs::create_dir_all(&dir).unwrap();
+
+        // One file already exists (will be overwritten), one is brand new.
+        let existing = dir.join("existing.txt");
+        let created = dir.join("nested").join("created.txt");
+        fs::write(&existing, "ORIGINAL").unwrap();
+
+        let template = Template::builder()
+            .with_file(File::create(
+                existing.to_string_lossy().to_string(),
+                "REPLACED",
+            ))
+            .with_file(File::create(
+                created.to_string_lossy().to_string(),
+                "brand new",
+            ));
+
+        let ctx = Context::new().non_interactive().force(true);
+        let (_rendered, undo) = template.extract_with_undo(&ctx).unwrap();
+
+        // Both writes happened.
+        assert_eq!(fs::read_to_string(&existing).unwrap(), "REPLACED");
+        assert_eq!(fs::read_to_string(&created).unwrap(), "brand new");
+        assert_eq!(undo.entries.len(), 2);
+
+        // Undo restores the overwritten file and deletes the created one.
+        let report = undo.apply();
+        assert_eq!(report.restored, 1);
+        assert_eq!(report.deleted, 1);
+        assert!(report.errors.is_empty());
+        assert_eq!(fs::read_to_string(&existing).unwrap(), "ORIGINAL");
+        assert!(!created.exists());
+    }
+
+    #[test]
+    fn extract_with_undo_ignores_non_file_sinks() {
+        let template = Template::builder().with_file(File::create("stdout://", "just printed"));
+        let (_rendered, undo) = template
+            .extract_with_undo(&Context::new().non_interactive())
+            .unwrap();
+        assert!(undo.is_empty(), "stdout:// has nothing to undo");
     }
 
     #[test]

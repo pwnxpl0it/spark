@@ -80,6 +80,7 @@ pub mod keywords;
 pub mod output_target;
 pub mod patch;
 pub mod templates;
+pub mod undo;
 mod utils;
 
 pub use context::{Context, MissingPolicy};
@@ -89,6 +90,7 @@ pub use output_target::OutputTarget;
 pub use patch::{FileMode, Position};
 use serde::{Deserialize, Serialize};
 pub use templates::{Options, RenderedFile};
+pub use undo::{UndoEntry, UndoLog, UndoReport};
 
 /// Utility container for keyword operations and default variable initializations.
 pub struct Keywords {}

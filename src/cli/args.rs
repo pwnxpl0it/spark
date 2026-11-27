@@ -70,9 +70,26 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Creates a template for the current directory
-    Init,
+    Init {
+        /// Set `git = true` in the generated `[options]`
+        #[arg(long)]
+        git: bool,
+        /// Set `use_liquid = true` in the generated `[options]`
+        #[arg(long)]
+        liquid: bool,
+        /// Set `project_root` in the generated `[options]`
+        #[arg(long, value_name = "VALUE")]
+        project_root: Option<String>,
+        /// Generate the template from a GitHub repo instead of the current
+        /// directory. Accepts `owner/repo` or `owner/repo@ref` (branch or tag).
+        #[arg(long, value_name = "OWNER/REPO")]
+        from_github: Option<String>,
+    },
     /// Lists the templates available in the templates directory
     List,
+    /// Reverses the most recent extraction: deletes files Spark created and
+    /// restores files it overwrote or patched
+    Undo,
 }
 
 impl Cli {
@@ -142,8 +159,54 @@ mod tests {
     #[test]
     fn parses_init_subcommand() {
         let cli = Cli::try_parse_from(["spark", "init"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Init)));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Init {
+                git: false,
+                liquid: false,
+                project_root: None,
+                from_github: None,
+            })
+        ));
         assert!(cli.template.is_none());
+    }
+
+    #[test]
+    fn parses_init_with_options() {
+        let cli = Cli::try_parse_from([
+            "spark",
+            "init",
+            "--git",
+            "--liquid",
+            "--project-root",
+            "{{$PROJECTNAME}}",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Init {
+                git,
+                liquid,
+                project_root,
+                from_github,
+            }) => {
+                assert!(git);
+                assert!(liquid);
+                assert_eq!(project_root.as_deref(), Some("{{$PROJECTNAME}}"));
+                assert!(from_github.is_none());
+            }
+            other => panic!("expected Init, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_init_from_github() {
+        let cli = Cli::try_parse_from(["spark", "init", "--from-github", "owner/repo@v2"]).unwrap();
+        match cli.command {
+            Some(Commands::Init { from_github, .. }) => {
+                assert_eq!(from_github.as_deref(), Some("owner/repo@v2"));
+            }
+            other => panic!("expected Init, got {other:?}"),
+        }
     }
 
     #[test]
@@ -191,5 +254,12 @@ mod tests {
     fn from_flag_is_repeatable() {
         let cli = Cli::try_parse_from(["spark", "demo", "--from", "a=1", "--from", "b=2"]).unwrap();
         assert_eq!(cli.keywords, vec!["a=1".to_string(), "b=2".to_string()]);
+    }
+
+    #[test]
+    fn parses_undo_subcommand() {
+        let cli = Cli::try_parse_from(["spark", "undo"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::Undo)));
+        assert!(cli.template.is_none());
     }
 }
