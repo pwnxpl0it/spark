@@ -11,9 +11,9 @@ cargo run -- [TEMPLATE] [OPTIONS]
 ```
 
 CI runs fmt, clippy (with default features and `--no-default-features`), and the
-tests on a single Linux runner for every push and pull request. Cross-platform
-binaries are built only by the release workflow when a GitHub release is
-published.
+tests on a single Linux runner for pull requests to `main` and pushes to `main`.
+Cross-platform binaries are built only by the release workflow when a GitHub
+release is published.
 
 Tests live in `#[cfg(test)]` modules inside each source file. They cover
 keywords, functions, utilities, templates (JSON paths, Liquid ordering,
