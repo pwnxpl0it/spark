@@ -1,0 +1,19 @@
+[book]
+title = "Spark"
+description = "A TOML-based project initializer and template engine"
+authors = ["Mohamed Tarek (@pwnxpl0it)"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/pwnxpl0it/spark"
+edit-url-template = "https://github.com/pwnxpl0it/spark/edit/main/docs/{path}"
+default-theme = "navy"
+preferred-dark-theme = "navy"
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
